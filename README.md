@@ -42,8 +42,8 @@ Tools (agent/tools.py)                                    │
 ## Setup
 
 ### Prerequisites
-- [Docker](https://www.docker.com/)
-- A Google Gemini API key ([get one here](https://aistudio.google.com/))
+- Docker
+- A Google Gemini API key
 - A YouTube Data API v3 key
 
 ### Install

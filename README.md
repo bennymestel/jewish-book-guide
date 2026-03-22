@@ -81,10 +81,10 @@ cli.py          Typer CLI entry point
 
 | Layer | Technology |
 |-------|-----------|
-| Agent framework | [LangGraph](https://github.com/langchain-ai/langgraph) |
+| Agent framework | LangGraph
 | LLM | Google Gemini (via LangChain) |
 | Vector DB | PostgreSQL + pgvector |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
 | Web framework | FastAPI |
 | Data source | Sefaria API |
-| MCP integration | YouTube search |
+| MCP integration | Sefaria, YouTube search |

@@ -1,0 +1,28 @@
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: books
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/books.dump:/docker-entrypoint-initdb.d/books.dump
+      - ./db/restore.sh:/docker-entrypoint-initdb.d/restore.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d books"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres@db/books
+    depends_on:
+      db:
+        condition: service_healthy
+

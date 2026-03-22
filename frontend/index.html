@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jewish Book Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface2: #f1f5f9;
+      --surface3: #e2e8f0;
+      --border: #e2e8f0;
+      --border-light: #cbd5e1;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --text-dim: #94a3b8;
+      --accent: #0f172a;
+      --accent-dim: #334155;
+      --accent-glow: rgba(15, 23, 42, 0.08);
+      --user-bubble: #2b7ff8;
+      --user-border: #1a6fe0;
+      --radius: 16px;
+      --radius-sm: 8px;
+      --font: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Header ── */
+    header {
+      width: 100%;
+      background: #ffffff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .header-inner {
+      width: 100%;
+      max-width: 720px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      background: #2b7ff8;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 1px 8px rgba(43, 127, 248, 0.25);
+    }
+    .logo-mark svg { width: 17px; height: 17px; fill: #ffffff; }
+
+    .logo-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: -0.2px;
+    }
+    .logo-text span {
+      color: var(--text-muted);
+      font-weight: 400;
+      font-size: 13px;
+      margin-left: 6px;
+    }
+
+    .new-chat-btn {
+      margin-left: auto;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #64748b;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      font-family: var(--font);
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .new-chat-btn svg { width: 13px; height: 13px; }
+    .new-chat-btn:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+      color: #0f172a;
+    }
+
+
+    /* ── Message list ── */
+    #messages {
+      flex: 1;
+      width: 100%;
+      max-width: 720px;
+      overflow-y: auto;
+      padding: 28px 20px 160px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      scroll-behavior: smooth;
+    }
+
+    /* Welcome screen */
+    #welcome {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      text-align: center;
+      padding: 40px 24px;
+    }
+
+    .welcome-icon {
+      width: 48px;
+      height: 48px;
+      background: #2b7ff8;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 20px rgba(43, 127, 248, 0.18);
+    }
+    .welcome-icon svg { width: 24px; height: 24px; fill: #ffffff; }
+
+    #welcome h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #0f172a;
+      letter-spacing: -0.4px;
+      line-height: 1.2;
+    }
+    #welcome p {
+      color: #64748b;
+      font-size: 14px;
+      max-width: 360px;
+      line-height: 1.6;
+      margin-top: 6px;
+    }
+
+    .suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 24px;
+      width: 100%;
+      max-width: 520px;
+    }
+    .suggestion {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-size: 13px;
+      font-family: var(--font);
+      font-weight: 500;
+      color: #475569;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+      white-space: nowrap;
+    }
+    .suggestion:hover {
+      background: #f8fafc;
+      border-color: #94a3b8;
+      color: #0f172a;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .suggestion:last-child:nth-child(odd) {
+      grid-column: span 2;
+    }
+
+    /* ── Message rows ── */
+    .msg {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      animation: msgIn 0.2s cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .msg.user {
+      flex-direction: row-reverse;
+      margin-left: 64px;
+      align-items: flex-start;
+    }
+    .msg.assistant {
+      margin-right: 64px;
+    }
+
+    .avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      margin-top: 2px;
+    }
+    .msg.user .avatar {
+      background: #2b7ff8;
+      color: #ffffff;
+    }
+    .msg.assistant .avatar {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+    }
+    .msg.assistant .avatar svg { width: 13px; height: 13px; fill: #64748b; }
+
+    .bubble {
+      max-width: 100%;
+      padding: 10px 15px;
+      font-size: 14px;
+      line-height: 1.65;
+      word-break: break-word;
+    }
+    .msg.user .bubble {
+      background: #2b7ff8;
+      border-radius: 20px 20px 4px 20px;
+      color: #ffffff;
+      padding: 10px 16px;
+      display: inline-block;
+      max-width: 100%;
+    }
+    .msg.assistant .bubble {
+      background: transparent;
+      padding-left: 2px;
+      padding-bottom: 4px;
+      color: #1e293b;
+    }
+
+    /* Markdown inside bubbles */
+    .bubble p { margin-bottom: 10px; }
+    .bubble p:last-child { margin-bottom: 0; }
+    .bubble strong { color: #0f172a; font-weight: 600; }
+    .bubble em { color: #64748b; }
+    .bubble ul, .bubble ol { padding-left: 20px; margin-bottom: 10px; }
+    .bubble li { margin-bottom: 5px; }
+    .bubble h3 {
+      font-size: 14.5px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+      margin-top: 14px;
+      letter-spacing: -0.1px;
+    }
+    .bubble h3:first-child { margin-top: 0; }
+    .bubble code {
+      background: var(--surface3);
+      padding: 2px 6px;
+      border-radius: 5px;
+      font-size: 12.5px;
+      font-family: "SF Mono", "Fira Code", monospace;
+      color: var(--accent);
+    }
+    .bubble a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }
+    .bubble a:hover { border-bottom-color: var(--accent); }
+    .bubble hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+    .bubble blockquote {
+      border-left: 2px solid var(--accent-dim);
+      padding-left: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+      margin: 8px 0;
+    }
+
+    /* Typing indicator */
+    .typing-dots {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      padding: 6px 2px;
+    }
+    .typing-dots span {
+      width: 6px; height: 6px;
+      background: var(--text-dim);
+      border-radius: 50%;
+      animation: blink 1.3s ease-in-out infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.18s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.25; transform: scale(0.9); }
+      40%           { opacity: 1;    transform: scale(1.1); }
+    }
+
+    /* ── Input area ── */
+    .input-wrap {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 20px 24px;
+    }
+    .input-wrap::before {
+      content: "";
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: linear-gradient(to top, #f8fafc, transparent);
+      pointer-events: none;
+    }
+
+    .input-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      width: 100%;
+      max-width: 720px;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid #e2e8f0;
+      border-radius: 24px;
+      padding: 10px 10px 10px 18px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .input-row:focus-within {
+      border-color: #93c5fd;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 0 0 3px rgba(43, 127, 248, 0.12);
+    }
+
+    #input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      color: #0f172a;
+      font-size: 14px;
+      font-family: var(--font);
+      resize: none;
+      max-height: 140px;
+      line-height: 1.55;
+      padding: 3px 0;
+    }
+    #input::placeholder { color: #94a3b8; }
+
+    #send-btn {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: none;
+      background: #2b7ff8;
+      color: #ffffff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    #send-btn:not(:disabled):hover { opacity: 0.85; }
+    #send-btn:not(:disabled):active { transform: scale(0.93); }
+    #send-btn:disabled { opacity: 0.25; cursor: default; }
+    #send-btn svg { width: 15px; height: 15px; }
+
+    .hint {
+      text-align: center;
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 8px;
+      letter-spacing: 0.1px;
+    }
+
+    /* scrollbar */
+    #messages::-webkit-scrollbar { width: 5px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    #messages::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="logo-mark">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L9.5 8.5H3L8.5 12.5L6 19L12 15L18 19L15.5 12.5L21 8.5H14.5L12 2Z"/>
+      </svg>
+    </div>
+    <div class="logo-text">
+      Jewish Book Guide
+    </div>
+    <button class="new-chat-btn" onclick="newChat()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      New chat
+    </button>
+  </div>
+</header>
+
+<div id="messages">
+  <div id="welcome">
+    <div class="welcome-icon">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L9.5 8.5H3L8.5 12.5L6 19L12 15L18 19L15.5 12.5L21 8.5H14.5L12 2Z"/>
+      </svg>
+    </div>
+    <h2>What would you like to explore?</h2>
+    <p>Ask about any book in the collection, get recommendations, or browse by topic.</p>
+    <div class="suggestions">
+      <button class="suggestion" onclick="sendSuggestion(this)">Tell me about Tanya</button>
+      <button class="suggestion" onclick="sendSuggestion(this)">Beginner Musar books</button>
+      <button class="suggestion" onclick="sendSuggestion(this)">Books about prayer</button>
+      <button class="suggestion" onclick="sendSuggestion(this)">What Chasidut books do you have?</button>
+      <button class="suggestion" onclick="sendSuggestion(this)">Similar to Mesillat Yesharim but easier</button>
+      <button class="suggestion" onclick="sendSuggestion(this)">Passage from Tanya chapter 1</button>
+    </div>
+  </div>
+</div>
+
+<div class="input-wrap">
+  <div class="input-row">
+    <textarea
+      id="input"
+      rows="1"
+      placeholder="Ask about a book or request recommendations…"
+      onkeydown="handleKey(event)"
+      oninput="autoResize(this)"
+    ></textarea>
+    <button id="send-btn" onclick="sendMessage()" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="19" x2="12" y2="5"/>
+        <polyline points="5 12 12 5 19 12"/>
+      </svg>
+    </button>
+  </div>
+  <p class="hint">Enter to send &middot; Shift+Enter for new line</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script>
+  const API_BASE = "";
+  let sessionId = crypto.randomUUID();
+  let busy = false;
+
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send-btn");
+  const messages = document.getElementById("messages");
+
+  const AVATAR_SVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L9.5 8.5H3L8.5 12.5L6 19L12 15L18 19L15.5 12.5L21 8.5H14.5L12 2Z"/></svg>`;
+
+  input.addEventListener("input", () => {
+    sendBtn.disabled = !input.value.trim() || busy;
+  });
+
+  function autoResize(el) {
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }
+
+  function handleKey(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (!sendBtn.disabled) sendMessage();
+    }
+  }
+
+  function sendSuggestion(btn) {
+    input.value = btn.textContent;
+    sendMessage();
+  }
+
+  const WELCOME_HTML = `
+    <div id="welcome">
+      <div class="welcome-icon">${AVATAR_SVG}</div>
+      <h2>What would you like to explore?</h2>
+      <p>Ask about any book in the collection, get recommendations, or browse by topic.</p>
+      <div class="suggestions">
+        <button class="suggestion" onclick="sendSuggestion(this)">Tell me about Tanya</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Beginner Musar books</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Books about prayer</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">What Chasidut books do you have?</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Similar to Mesillat Yesharim but easier</button>
+        <button class="suggestion" onclick="sendSuggestion(this)">Passage from Tanya chapter 1</button>
+      </div>
+    </div>`;
+
+  function newChat() {
+    sessionId = crypto.randomUUID();
+    messages.innerHTML = WELCOME_HTML;
+  }
+
+  function appendMessage(role, text) {
+    const w = document.getElementById("welcome");
+    if (w) w.remove();
+
+    const row = document.createElement("div");
+    row.className = `msg ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    if (role === "assistant") {
+      avatar.innerHTML = AVATAR_SVG;
+    } else {
+      avatar.textContent = "You";
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    if (role === "assistant") {
+      bubble.innerHTML = marked.parse(text);
+    } else {
+      bubble.textContent = text;
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+    return bubble;
+  }
+
+  function showTyping() {
+    const w = document.getElementById("welcome");
+    if (w) w.remove();
+
+    const row = document.createElement("div");
+    row.className = "msg assistant";
+    row.id = "typing-row";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.innerHTML = AVATAR_SVG;
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+    return bubble;
+  }
+
+  function setTypingStatus(bubble, label) {
+    bubble.innerHTML = `<p style="font-size:13px;font-style:italic;color:var(--text-dim)">${label}…</p>`;
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function removeTyping() {
+    const t = document.getElementById("typing-row");
+    if (t) t.remove();
+  }
+
+  async function sendMessage() {
+    const text = input.value.trim();
+    if (!text || busy) return;
+
+    busy = true;
+    sendBtn.disabled = true;
+    input.value = "";
+    input.style.height = "auto";
+
+    appendMessage("user", text);
+    const typingBubble = showTyping();
+
+    try {
+      const res = await fetch(`${API_BASE}/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, message: text }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Unknown error" }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let reply = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
+        for (const part of parts) {
+          const eventMatch = part.match(/^event: (\w+)\ndata: (.+)$/s);
+          if (!eventMatch) continue;
+          const [, evtType, evtData] = eventMatch;
+          if (evtType === "tool") {
+            setTypingStatus(typingBubble, JSON.parse(evtData));
+          } else if (evtType === "reply") {
+            reply = JSON.parse(evtData);
+          } else if (evtType === "error") {
+            throw new Error(JSON.parse(evtData));
+          }
+        }
+      }
+
+      removeTyping();
+      if (reply !== null) appendMessage("assistant", reply);
+    } catch (err) {
+      removeTyping();
+      appendMessage("assistant", `Sorry, something went wrong: ${err.message}\n\nMake sure the server is running at \`${API_BASE}\`.`);
+    } finally {
+      busy = false;
+      sendBtn.disabled = !input.value.trim();
+      input.focus();
+    }
+  }
+</script>
+</body>
+</html>

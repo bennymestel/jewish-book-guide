@@ -25,7 +25,7 @@ FastAPI server (agent/server.py)
  │   session state (in-memory)
  ▼
 LangGraph ReAct agent (agent/graph.py)
- │   Google Gemini (gemini-2.0-flash-lite)
+ │   Google Gemini
  │   tool calls ──────────────────────────────────────────┐
  ▼                                                         │
 Tools (agent/tools.py)                                     │

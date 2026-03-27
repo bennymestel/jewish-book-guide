@@ -4,7 +4,9 @@ A conversational AI guide for Jewish books — recommends texts from the Chasidu
 
 Built as a portfolio project to demonstrate AI agent development with LangGraph, vector search, and MCP tool integration.
 
-<video src="jewish-book-demo.mov" controls width="100%"></video>
+
+https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
+
 
 ## What it does
 

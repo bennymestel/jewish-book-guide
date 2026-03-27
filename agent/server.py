@@ -30,12 +30,15 @@ from pydantic import BaseModel
 
 from agent.graph import build_graph, load_youtube_tools, load_sefaria_tools
 
+logger = logging.getLogger(__name__)
+
 TOOL_LABELS: dict[str, str] = {
     "get_recommendations": "Finding recommendations",
     "lookup_book": "Looking up book",
     "browse_collection": "Browsing collection",
     "search_by_theme": "Searching by theme",
-    "get_sefaria_passage": "Fetching passage",
+    "get_text": "Fetching passage",
+    "get_text_catalogue_info": "Looking up Sefaria catalogue",
     "searchVideos": "Searching YouTube",
 }
 
@@ -89,10 +92,13 @@ class ResetResponse(BaseModel):
     status: str
 
 
+HISTORY_LIMIT = 20  # keep last 20 messages (~10 exchanges) to cap token usage
+
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest) -> ChatResponse:
     prev = _sessions.get(req.session_id, {"messages": []})
-    state = {"messages": list(prev["messages"]) + [HumanMessage(content=req.message)]}
+    state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
 
     try:
         result = await _graph.ainvoke(state)
@@ -116,24 +122,49 @@ async def chat(req: ChatRequest) -> ChatResponse:
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest) -> StreamingResponse:
     prev = _sessions.get(req.session_id, {"messages": []})
-    state = {"messages": list(prev["messages"]) + [HumanMessage(content=req.message)]}
+    state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
 
     async def event_stream():
-        final_state = state
+        final_state = None
+        last_ai_text = None
         try:
             async for event in _graph.astream_events(state, version="v2"):
                 kind = event["event"]
+                logger.debug("[STREAM] event=%s name=%s", kind, event.get("name"))
                 if kind == "on_tool_start":
                     tool_name = event.get("name", "")
                     label = TOOL_LABELS.get(tool_name, tool_name.replace("_", " ").capitalize())
                     yield f"event: tool\ndata: {json.dumps(label)}\n\n"
-                elif kind == "on_chain_end" and event.get("name") == "LangGraph":
-                    final_state = event["data"].get("output", state)
+                elif kind == "on_chat_model_end":
+                    output = event["data"].get("output")
+                    if output is not None:
+                        content = output.content if hasattr(output, "content") else None
+                        if isinstance(content, list):
+                            text = "".join(
+                                block["text"] for block in content if isinstance(block, dict) and "text" in block
+                            )
+                        elif isinstance(content, str):
+                            text = content
+                        else:
+                            text = None
+                        if text:
+                            last_ai_text = text
+                            logger.debug("[STREAM] on_chat_model_end captured text len=%d", len(text))
+                elif kind == "on_chain_end":
+                    output = event["data"].get("output")
+                    logger.debug("[STREAM] on_chain_end output type=%s keys=%s", type(output).__name__, list(output.keys()) if isinstance(output, dict) else "n/a")
+                    if isinstance(output, dict) and "messages" in output:
+                        final_state = output
         except Exception as e:
+            logger.exception("[STREAM] exception: %s", e)
             yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
             return
 
+        if final_state is None:
+            final_state = state
         _sessions[req.session_id] = final_state
+
+        # Extract reply: prefer the final state messages, fall back to last captured AI text
         last = final_state["messages"][-1]
         content = last.content if hasattr(last, "content") else str(last)
         if isinstance(content, list):
@@ -142,6 +173,11 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
             )
         else:
             reply = content
+
+        if not reply and last_ai_text:
+            logger.debug("[STREAM] falling back to last_ai_text")
+            reply = last_ai_text
+
         yield f"event: reply\ndata: {json.dumps(reply)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

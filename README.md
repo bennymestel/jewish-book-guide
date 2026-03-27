@@ -4,7 +4,7 @@ A conversational AI guide for Jewish books — recommends texts from the Chasidu
 
 Built as a portfolio project to demonstrate AI agent development with LangGraph, vector search, and MCP tool integration.
 
-![Screenshot](docs/screenshot.png)
+<video src="jewish-book-demo.mov" controls width="100%"></video>
 
 ## What it does
 
@@ -31,8 +31,8 @@ Tools (agent/tools.py)                                    │
   get_recommendations→ pgvector cosine sim + re-rank      │
   browse_collection  → PostgreSQL (filtered query)        │
   search_by_theme    → PostgreSQL (array search)          │
-  get_sefaria_passage→ Sefaria REST API                   │
-  youtube_search     → YouTube MCP server             ◄───┘
+  Sefaria MCP tools  → Sefaria MCP server (SSE)        ◄───┤
+  YouTube MCP tools  → YouTube MCP server (stdio)      ◄───┘
 ```
 
 **Recommendation engine** (recommender/query.py) uses a two-stage approach:

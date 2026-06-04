@@ -14,7 +14,6 @@ from langgraph.prebuilt import ToolNode, tools_condition
 import config
 from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
-from agent.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ async def build_graph(extra_tools: list = []):
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
     )
-    all_tools = ALL_TOOLS + extra_tools
+    all_tools = extra_tools
     llm_with_tools = llm.bind_tools(all_tools)
     tool_node = ToolNode(all_tools)
 
@@ -45,6 +44,27 @@ async def build_graph(extra_tools: list = []):
     graph.add_edge("tools", "agent")
 
     return graph.compile()
+
+
+async def load_local_tools() -> tuple[list, object | None]:
+    """Load the Jewish book guide tools from the local MCP server via stdio."""
+    try:
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        client = MultiServerMCPClient({
+            "jewish-books": {
+                "command": "python",
+                "args": ["-m", "mcp_server.server"],
+                "transport": "stdio",
+                "env": {**os.environ},
+            }
+        })
+        tools = await client.get_tools()
+        logger.info("Loaded %d local MCP tools: %s", len(tools), [t.name for t in tools])
+        return tools, client
+    except Exception as e:
+        logger.warning("Failed to load local MCP tools: %s", e)
+        return [], None
 
 
 async def load_youtube_tools() -> tuple[list, object | None]:

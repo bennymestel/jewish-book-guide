@@ -28,7 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from agent.graph import build_graph, load_youtube_tools, load_sefaria_tools
+from agent.graph import build_graph, load_books_tools, load_youtube_tools, load_sefaria_tools
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +52,11 @@ _sessions: dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _graph, _mcp_clients
+    books_tools, books_client = await load_books_tools()
     youtube_tools, youtube_client = await load_youtube_tools()
     sefaria_tools, sefaria_client = await load_sefaria_tools()
-    _mcp_clients = [c for c in [youtube_client, sefaria_client] if c is not None]
-    _graph = await build_graph(extra_tools=youtube_tools + sefaria_tools)
+    _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
+    _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
     yield
 
 

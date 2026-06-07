@@ -1,19 +1,35 @@
 """
-LangGraph tool definitions for the Jewish book guide agent.
+Standalone MCP server exposing Jewish book guide tools over
+streamable HTTP.
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+load_dotenv()
 
 import psycopg
 import psycopg.rows
-from langchain_core.tools import tool
+from mcp.server.fastmcp import FastMCP
 
 import config
 
+logging.basicConfig(
+    level=logging.DEBUG if os.getenv("LOG_LEVEL", "").upper() == "DEBUG" else logging.INFO,
+    format="%(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
+mcp = FastMCP("jewish-books", host="0.0.0.0", port=8001)
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _find_book(title_query: str):
     from recommender.query import find_book
@@ -26,13 +42,12 @@ def _recommend(seed_titles, top_n=3, difficulty_pref=None, category_pref=None):
 
 
 def _escape_like(value: str) -> str:
-    """Escape ILIKE special characters so user input is treated as a literal string."""
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 # ── Tools ─────────────────────────────────────────────────────────────────────
 
-@tool
+@mcp.tool()
 def lookup_book(title_query: str) -> str:
     """Look up a Jewish book by title or Sefaria key in the local curated collection.
     Returns detailed metadata including author, category, difficulty, themes, and description.
@@ -64,7 +79,7 @@ def lookup_book(title_query: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-@tool
+@mcp.tool()
 def get_recommendations(
     seed_titles: list[str],
     top_n: int = 3,
@@ -122,7 +137,7 @@ def get_recommendations(
     return json.dumps(output, ensure_ascii=False)
 
 
-@tool
+@mcp.tool()
 def browse_collection(
     category: str | None = None,
     difficulty_max: int | None = None,
@@ -187,7 +202,7 @@ def browse_collection(
     return json.dumps({"books": books}, ensure_ascii=False)
 
 
-@tool
+@mcp.tool()
 def search_by_theme(theme: str, limit: int = 8) -> str:
     """Find books related to a specific theme or topic (e.g. 'prayer', 'teshuvah', 'Kabbalah', 'love of God').
     Returns books whose themes array contains the given theme."""
@@ -231,4 +246,5 @@ def search_by_theme(theme: str, limit: int = 8) -> str:
     return json.dumps({"theme": theme, "books": books}, ensure_ascii=False)
 
 
-ALL_TOOLS = [lookup_book, get_recommendations, browse_collection, search_by_theme]
+if __name__ == "__main__":
+    mcp.run(transport="streamable-http")

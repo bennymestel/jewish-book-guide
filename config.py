@@ -8,7 +8,7 @@ from pathlib import Path
 DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/books")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

@@ -8,26 +8,25 @@ import os
 
 from langchain_core.messages import SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.graph import StateGraph, END
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 import config
 from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
-from agent.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
 
-async def build_graph(extra_tools: list = []):
+async def build_graph(tools: list = []):
     llm = ChatGoogleGenerativeAI(
         model=config.GEMINI_MODEL,
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
     )
-    all_tools = ALL_TOOLS + extra_tools
-    llm_with_tools = llm.bind_tools(all_tools)
-    tool_node = ToolNode(all_tools)
+    llm_with_tools = llm.bind_tools(tools)
+    tool_node = ToolNode(tools)
 
     async def agent_node(state: AgentState) -> dict:
         messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
@@ -47,47 +46,49 @@ async def build_graph(extra_tools: list = []):
     return graph.compile()
 
 
+async def _load_mcp_tools(
+    server_name: str,
+    server_config: dict,
+    tool_filter: set[str] | None = None,
+) -> tuple[list, object | None]:
+    try:
+        client = MultiServerMCPClient({server_name: server_config})
+        all_tools = await client.get_tools()
+        tools = [t for t in all_tools if t.name in tool_filter] if tool_filter else all_tools
+        logger.info("Loaded %d %s MCP tools: %s", len(tools), server_name, [t.name for t in tools])
+        return tools, client
+    except Exception as e:
+        logger.warning("Failed to load %s MCP tools: %s", server_name, e)
+        return [], None
+
+
 async def load_youtube_tools() -> tuple[list, object | None]:
-    """Load YouTube MCP tools. Returns (tools, mcp_client) — caller must close client."""
     youtube_api_key = os.environ.get("YOUTUBE_API_KEY", "")
     if not youtube_api_key:
         logger.warning("YOUTUBE_API_KEY not set — YouTube search will be unavailable")
         return [], None
+    return await _load_mcp_tools(
+        "youtube",
+        {
+            "command": "npx",
+            "args": ["-y", "@kirbah/mcp-youtube"],
+            "transport": "stdio",
+            "env": {**os.environ, "YOUTUBE_API_KEY": youtube_api_key},
+        },
+        tool_filter={"searchVideos"},
+    )
 
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        client = MultiServerMCPClient({
-            "youtube": {
-                "command": "npx",
-                "args": ["-y", "@kirbah/mcp-youtube"],
-                "transport": "stdio",
-                "env": {**os.environ, "YOUTUBE_API_KEY": youtube_api_key},
-            }
-        })
-        all_tools = await client.get_tools()
-        tools = [t for t in all_tools if t.name in {"searchVideos"}]
-        logger.info("Loaded %d YouTube MCP tools: %s", len(tools), [t.name for t in tools])
-        return tools, client
-    except Exception as e:
-        logger.warning("Failed to load YouTube MCP tools: %s", e)
-        return [], None
+async def load_books_tools() -> tuple[list, object | None]:
+    url = os.getenv("BOOKS_MCP_URL", "http://localhost:8001/mcp")
+    return await _load_mcp_tools(
+        "books",
+        {"transport": "streamable_http", "url": url},
+    )
 
 
 async def load_sefaria_tools() -> tuple[list, object | None]:
-    """Load Sefaria MCP tools. Returns (tools, mcp_client) — caller must close client."""
-    try:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
-
-        client = MultiServerMCPClient({
-            "sefaria-texts": {
-                "transport": "sse",
-                "url": "https://mcp.sefaria.org/sse",
-            }
-        })
-        tools = await client.get_tools()
-        logger.info("Loaded %d Sefaria MCP tools: %s", len(tools), [t.name for t in tools])
-        return tools, client
-    except Exception as e:
-        logger.warning("Failed to load Sefaria MCP tools: %s", e)
-        return [], None
+    return await _load_mcp_tools(
+        "sefaria-texts",
+        {"transport": "sse", "url": "https://mcp.sefaria.org/sse"},
+    )

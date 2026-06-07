@@ -24,15 +24,15 @@ FastAPI server (agent/server.py)
  ▼
 LangGraph ReAct agent (agent/graph.py)
  │   Google Gemini
- │   tool calls ──────────────────────────────────────────────────┐
- ▼                                                                │
-Books MCP server (mcp_server/server.py, streamable HTTP :8001) ◄──┤
-  lookup_book         → PostgreSQL (exact/fuzzy match)            │
-  get_recommendations → pgvector cosine sim + re-rank             │
-  browse_collection   → PostgreSQL (filtered query)               │
-  search_by_theme     → PostgreSQL (array search)                 │
-Sefaria MCP server    → https://mcp.sefaria.org (SSE)         ◄───┤
-YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)       ◄───┘
+ ▼
+tool calls
+ ├──► Books MCP server (mcp_server/server.py, streamable HTTP :8001)
+ │      lookup_book         → PostgreSQL (exact/fuzzy match)
+ │      get_recommendations → pgvector cosine sim + re-rank
+ │      browse_collection   → PostgreSQL (filtered query)
+ │      search_by_theme     → PostgreSQL (array search)
+ ├──► Sefaria MCP server    → https://mcp.sefaria.org (SSE)
+ └──► YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)
 ```
 
 **Recommendation engine** (`recommender/query.py`) uses a two-stage approach:

@@ -10,8 +10,7 @@ https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
 
 - Maintains a curated collection of ~50 canonical Jewish texts ingested from the [Sefaria](https://www.sefaria.org) library API
 - Generates vector embeddings (sentence-transformers) and stores them in PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)
-- Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users, retrieves book information via RAG, and calls three MCP servers to look up texts, find lectures, and query the local book collection
-- Exposes the four core book tools (lookup, recommend, browse, search by theme) as a **standalone MCP server** (streamable HTTP) — consumed by the agent at runtime alongside the Sefaria and YouTube MCP servers
+- Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users and calls three MCP servers: a custom **books MCP server** for RAG-based lookup and recommendations, **Sefaria** for Jewish texts, and **YouTube** for lectures
 
 ## Architecture
 

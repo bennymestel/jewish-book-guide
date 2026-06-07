@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ingestion.embed import build_profile
 from recommender.query import _score
-from agent.tools import _escape_like
+from mcp_server.server import _escape_like
 
 
 # ── build_profile ─────────────────────────────────────────────────────────────

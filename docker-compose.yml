@@ -15,6 +15,18 @@ services:
       timeout: 5s
       retries: 5
 
+  mcp:
+    build: .
+    command: python mcp_server/server.py
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres@db/books
+    depends_on:
+      db:
+        condition: service_healthy
+
   api:
     build: .
     ports:
@@ -22,12 +34,15 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://postgres@db/books
-      LOG_LEVEL: DEBUG
+      LOG_LEVEL: INFO
+      BOOKS_MCP_URL: http://mcp:8001/mcp
     volumes:
       - hf_cache:/root/.cache/huggingface
     depends_on:
       db:
         condition: service_healthy
+      mcp:
+        condition: service_started
 
 volumes:
   hf_cache:

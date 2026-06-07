@@ -14,7 +14,6 @@ from langgraph.prebuilt import ToolNode, tools_condition
 import config
 from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
-from agent.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ async def build_graph(extra_tools: list = []):
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
     )
-    all_tools = ALL_TOOLS + extra_tools
+    all_tools = extra_tools
     llm_with_tools = llm.bind_tools(all_tools)
     tool_node = ToolNode(all_tools)
 
@@ -71,6 +70,26 @@ async def load_youtube_tools() -> tuple[list, object | None]:
         return tools, client
     except Exception as e:
         logger.warning("Failed to load YouTube MCP tools: %s", e)
+        return [], None
+
+
+async def load_books_tools() -> tuple[list, object | None]:
+    """Load the local books MCP tools over streamable HTTP. Returns (tools, mcp_client)."""
+    url = os.getenv("BOOKS_MCP_URL", "http://localhost:8001/mcp")
+    try:
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        client = MultiServerMCPClient({
+            "books": {
+                "transport": "streamable_http",
+                "url": url,
+            }
+        })
+        tools = await client.get_tools()
+        logger.info("Loaded %d books MCP tools: %s", len(tools), [t.name for t in tools])
+        return tools, client
+    except Exception as e:
+        logger.warning("Failed to load books MCP tools: %s", e)
         return [], None
 
 

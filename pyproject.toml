@@ -21,6 +21,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "python-dotenv>=1.0",
     "langchain-mcp-adapters>=0.1",
+    "mcp>=1.0",
 ]
 
 [project.optional-dependencies]

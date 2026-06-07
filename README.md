@@ -1,6 +1,6 @@
 # Jewish Book Guide
 
-A RAG-based AI agent for exploring and recommending Jewish texts — built with LangGraph, pgvector, Google Gemini, and MCP tool integration. Developed as a portfolio project demonstrating AI agent architecture, vector search, and external API orchestration.
+A RAG-based AI agent for exploring and recommending Jewish texts — built with LangGraph, pgvector, Google Gemini, and MCP tool integration. Developed as a portfolio project demonstrating AI agent architecture, vector search, and MCP server development.
 
 
 https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
@@ -10,7 +10,8 @@ https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
 
 - Maintains a curated collection of ~50 canonical Jewish texts ingested from the [Sefaria](https://www.sefaria.org) library API
 - Generates vector embeddings (sentence-transformers) and stores them in PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)
-- Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users, retrieves book information via RAG, and uses MCP servers (Sefaria, YouTube) to query text metadata and find related lectures and shiurim
+- Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users, retrieves book information via RAG, and calls three MCP servers to look up texts, find lectures, and query the local book collection
+- Exposes the four core book tools (lookup, recommend, browse, search by theme) as a **standalone MCP server** (streamable HTTP) — consumed by the agent at runtime alongside the Sefaria and YouTube MCP servers
 
 ## Architecture
 
@@ -23,18 +24,18 @@ FastAPI server (agent/server.py)
  ▼
 LangGraph ReAct agent (agent/graph.py)
  │   Google Gemini
- │   tool calls ───────────────────────────────────────────┐
- ▼                                                         │
-Tools (agent/tools.py)                                     │
-  lookup_book         → PostgreSQL (exact/fuzzy match)     │
-  get_recommendations → pgvector cosine sim + re-rank      │
-  browse_collection   → PostgreSQL (filtered query)        │
-  search_by_theme     → PostgreSQL (array search)          │
-  Sefaria MCP tools   → Sefaria MCP server (SSE)       ◄───┤
-  YouTube MCP tools   → YouTube MCP server (stdio)     ◄───┘
+ │   tool calls ──────────────────────────────────────────────────┐
+ ▼                                                                │
+Books MCP server (mcp_server/server.py, streamable HTTP :8001) ◄──┤
+  lookup_book         → PostgreSQL (exact/fuzzy match)            │
+  get_recommendations → pgvector cosine sim + re-rank             │
+  browse_collection   → PostgreSQL (filtered query)               │
+  search_by_theme     → PostgreSQL (array search)                 │
+Sefaria MCP server    → https://mcp.sefaria.org (SSE)         ◄───┤
+YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)       ◄───┘
 ```
 
-**Recommendation engine** (recommender/query.py) uses a two-stage approach:
+**Recommendation engine** (`recommender/query.py`) uses a two-stage approach:
 1. Vector cosine similarity retrieves the top 20 candidates
 2. Re-ranking applies weighted bonuses for category match, subcategory match, theme overlap, and difficulty alignment
 
@@ -61,12 +62,13 @@ docker compose up -d
 # Open http://localhost:8000
 ```
 
-This starts PostgreSQL with pgvector pre-installed, seeds the database with book metadata and embeddings, and serves the app on port 8000.
+This starts three services: PostgreSQL (with pgvector), the books MCP server on port 8001, and the FastAPI app on port 8000.
 
 ## Project structure
 
 ```
-agent/          LangGraph agent (graph, tools, prompts, FastAPI server)
+agent/          LangGraph agent (graph, prompts, FastAPI server)
+mcp_server/     Standalone MCP server exposing the four book tools
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
 recommender/    Two-stage recommendation engine
 db/             PostgreSQL schema
@@ -80,10 +82,11 @@ tests/          Test suite
 
 | Layer | Technology |
 |-------|-----------|
-| Agent framework | LangGraph
+| Agent framework | LangGraph |
 | LLM | Google Gemini (via LangChain) |
 | Vector DB | PostgreSQL + pgvector |
 | Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
 | Web framework | FastAPI |
+| MCP (consumed) | Sefaria (SSE), YouTube (stdio) |
+| MCP (built) | Books tool server (streamable HTTP) |
 | Data source | Sefaria API |
-| MCP integration | Sefaria, YouTube search |

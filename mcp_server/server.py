@@ -1,10 +1,6 @@
 """
-Standalone MCP server exposing the four Jewish book guide tools over
-streamable HTTP. Run directly:
-
-    python mcp_server/server.py
-
-or via docker-compose (see docker-compose.yml).
+Standalone MCP server exposing Jewish book guide tools over
+streamable HTTP.
 """
 from __future__ import annotations
 
@@ -13,7 +9,6 @@ import logging
 import os
 import sys
 
-# Allow imports from the project root when run directly.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv

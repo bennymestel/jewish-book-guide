@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     youtube_tools, youtube_client = await load_youtube_tools()
     sefaria_tools, sefaria_client = await load_sefaria_tools()
     _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
-    _graph = await build_graph(extra_tools=books_tools + youtube_tools + sefaria_tools)
+    _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
     yield
 
 

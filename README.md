@@ -26,10 +26,12 @@ LangGraph ReAct agent (agent/graph.py)
  ▼
 tool calls
  ├──► Books MCP server (mcp_server/server.py, streamable HTTP :8001)
- │      lookup_book         → PostgreSQL (exact/fuzzy match)
- │      get_recommendations → pgvector cosine sim + re-rank
- │      browse_collection   → PostgreSQL (filtered query)
- │      search_by_theme     → PostgreSQL (array search)
+ │      Tools:    lookup_book         → PostgreSQL (exact/fuzzy match)
+ │                get_recommendations → pgvector cosine sim + re-rank
+ │                browse_collection   → PostgreSQL (filtered query)
+ │                search_by_theme     → PostgreSQL (array search)
+ │      Resource: books://all         → full collection dataset
+ │      Prompts:  reading_plan, explain_book_to_beginner
  ├──► Sefaria MCP server    → https://mcp.sefaria.org (SSE)
  └──► YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)
 ```

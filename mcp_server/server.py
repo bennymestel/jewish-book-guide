@@ -246,5 +246,81 @@ def search_by_theme(theme: str, limit: int = 8) -> str:
     return json.dumps({"theme": theme, "books": books}, ensure_ascii=False)
 
 
+# ── Resources ─────────────────────────────────────────────────────────────────
+
+@mcp.resource("books://all")
+def all_books() -> str:
+    """The full curated Jewish book collection as JSON.
+    Returns every book with title, author, category, difficulty, themes, and description.
+    Fetch this once to have the complete dataset available as context."""
+    try:
+        with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT title_en, author_en, category, subcategory,
+                           difficulty, themes, is_foundational, desc_en_short
+                    FROM books
+                    ORDER BY category, difficulty ASC NULLS LAST
+                """)
+                rows = cur.fetchall()
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+    books = []
+    for r in rows:
+        diff = r.get("difficulty")
+        books.append({
+            "title": r["title_en"],
+            "author": r.get("author_en") or "Unknown",
+            "category": r.get("category") or "—",
+            "subcategory": r.get("subcategory"),
+            "difficulty": diff,
+            "difficulty_label": config.DIFFICULTY_LABELS.get(diff or 0, "") if diff else "",
+            "is_foundational": r.get("is_foundational") or False,
+            "themes": r.get("themes") or [],
+            "description": r.get("desc_en_short") or "",
+        })
+
+    return json.dumps({"total": len(books), "books": books}, ensure_ascii=False)
+
+
+# ── Prompts ────────────────────────────────────────────────────────────────────
+
+@mcp.prompt()
+def reading_plan(topic: str, background: str = "none") -> str:
+    """Generate a structured reading plan prompt for a given topic and background level.
+    topic: the subject of interest (e.g. 'prayer', 'teshuvah', 'Kabbalah').
+    background: the user's prior knowledge — 'none', 'some', or 'advanced'."""
+    return f"""Create a personalised Jewish reading plan on the topic of "{topic}" for someone with {background} prior background.
+
+Follow these steps:
+1. Call search_by_theme("{topic}") to find relevant books.
+2. Call browse_collection with foundational_only=True if the background suggests a beginner (e.g. none, little, some), or foundational_only=False if the background suggests experience (e.g. advanced, familiar, studied before). Use your judgement based on what the user said.
+3. From the combined results, select 3–5 books that form a logical progression suited to someone with {background} prior background.
+4. Present them as a list ordered by difficulty, with:
+   - Bold title and author
+   - Difficulty label (e.g. Introductory, Beginner)
+   - One sentence explaining why this book belongs at this stage of the journey
+Do not add a preamble or closing remarks."""
+
+
+@mcp.prompt()
+def explain_book_to_beginner(title: str) -> str:
+    """Generate a prompt that instructs the agent to explain a book to a complete beginner.
+    title: the name of the book to explain."""
+    return f"""Explain the book "{title}" to someone who has never studied Jewish texts before.
+
+Follow these steps:
+1. Call lookup_book("{title}") to get the book's metadata (author, category, difficulty, themes).
+2. Call get_text with the book's Sefaria key to fetch the opening passage (chapter 1). Use version_language="english".
+3. Present your explanation in this order:
+   a. One sentence on who wrote it and when.
+   b. One sentence on what the book is fundamentally about.
+   c. Quote 1–2 sentences from the opening passage.
+   d. 2–3 sentences explaining that passage in plain everyday language, avoiding jargon.
+   e. One sentence on why a modern reader might find it relevant.
+Keep the total response under 200 words."""
+
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http")

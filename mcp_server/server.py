@@ -290,7 +290,7 @@ def all_books() -> str:
 def reading_plan(topic: str, background: str = "none") -> str:
     """Generate a structured reading plan prompt for a given topic and background level.
     topic: the subject of interest (e.g. 'prayer', 'teshuvah', 'Kabbalah').
-    background: the user's prior knowledge — 'none', 'some', or 'advanced'."""
+    background: the user's prior knowledge in their own words (e.g. 'none', 'a little', 'advanced')."""
     return f"""Create a personalised Jewish reading plan on the topic of "{topic}" for someone with {background} prior background.
 
 Follow these steps:

@@ -295,9 +295,9 @@ def reading_plan(topic: str, background: str = "none") -> str:
 
 Follow these steps:
 1. Call search_by_theme("{topic}") to find relevant books.
-2. Call browse_collection(foundational_only=True) to identify entry-level texts.
-3. From the combined results, select 3–5 books that form a logical progression from accessible to deeper.
-4. Present them as a numbered list ordered by difficulty, with:
+2. Call browse_collection with foundational_only=True if the background suggests a beginner (e.g. none, little, some), or foundational_only=False if the background suggests experience (e.g. advanced, familiar, studied before). Use your judgement based on what the user said.
+3. From the combined results, select 3–5 books that form a logical progression suited to someone with {background} prior background.
+4. Present them as a list ordered by difficulty, with:
    - Bold title and author
    - Difficulty label (e.g. Introductory, Beginner)
    - One sentence explaining why this book belongs at this stage of the journey

@@ -69,7 +69,7 @@ This starts three services: PostgreSQL (with pgvector), the books MCP server on 
 
 ```
 agent/          LangGraph agent (graph, prompts, FastAPI server)
-mcp_server/     Standalone MCP server exposing the four book tools
+mcp_server/     Standalone MCP server exposing four tools, a resource, and two prompts
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
 recommender/    Two-stage recommendation engine
 db/             PostgreSQL schema

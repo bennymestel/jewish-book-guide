@@ -11,7 +11,7 @@ https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
 - Maintains a curated collection of ~50 canonical Jewish texts ingested from the [Sefaria](https://www.sefaria.org) library API
 - Generates vector embeddings (sentence-transformers) and stores them in PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)
 - Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users and calls three MCP servers: a custom **books MCP server** for RAG-based lookup and recommendations, **Sefaria** for Jewish texts, and **YouTube** for lectures
-- Includes an **Agent Skill** for one-command project setup, compatible with Claude Code, GitHub Copilot, and other agents supporting the skill format
+- Includes a **Claude Code Skill** for hands-free project setup — just tell it to start the project
 
 ## Architecture
 
@@ -64,7 +64,7 @@ docker compose up -d
 
 This starts three services: PostgreSQL (with pgvector), the books MCP server on port 8001, and the FastAPI app on port 8000.
 
-> **Using an AI coding agent?** If your agent supports the [Agent Skills](https://agentskills.dev) format (Claude Code, GitHub Copilot, etc.), you can skip the manual steps — just tell it to start or spin up the project and it will handle setup automatically.
+> **Using Claude Code?** Just tell it to start or spin up the project — it will handle setup automatically.
 
 ## Project structure
 
@@ -92,4 +92,4 @@ tests/          Test suite
 | MCP (consumed) | Sefaria (SSE), YouTube (stdio) |
 | MCP (built) | Books tool server (streamable HTTP) |
 | Data source | Sefaria API |
-| Agent Skill | Agent Skills format (.agents/) |
+| Agent Skill | Claude Code Skill (.claude/skills/) |

@@ -4,12 +4,13 @@ description: >
   Use this skill when the user wants to get the project up and running —
   whether they say "initialize project", "start the stack", "spin up the
   app", or "get things working locally".
+allowed-tools: Bash
 ---
 
 Run the initialization script from the project root:
 
 ```bash
-bash .agents/skills/initialize-project/scripts/init-project.sh
+bash ${CLAUDE_SKILL_DIR}/scripts/init-project.sh
 ```
 
 The script prints structured sections prefixed with `## SECTION`. Parse these to build your response.

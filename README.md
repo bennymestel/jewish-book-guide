@@ -47,6 +47,7 @@ tool calls
 - Docker
 - A Google Gemini API key
 - A YouTube Data API v3 key
+- A [LangSmith](https://smith.langchain.com) API key (optional — for agent tracing)
 
 ### Install
 
@@ -95,3 +96,4 @@ tests/          Test suite
 | MCP (built) | Books tool server (streamable HTTP) |
 | Data source | Sefaria API |
 | Agent Skill | Claude Code Skill (.claude/skills/) |
+| Observability | LangSmith (LangGraph tracing) |

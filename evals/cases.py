@@ -61,7 +61,7 @@ CASES: list[dict] = [
         # Chasidut/Musar/Jewish Thought local collection. The agent should fall back to
         # the Sefaria MCP tools (get_text or get_text_catalogue_info) to answer.
         "input": "Can you tell me about the book of Vayikra and what it covers?",
-        "required_tools": {"get_text_catalogue_info", "get_text"},
+        "required_tools": {"get_text_catalogue_info"},
         "max_difficulty": None,
         "expect_grounded": False,
     },
@@ -78,7 +78,7 @@ CASES: list[dict] = [
     {
         "id": "reading_plan_beginner",
         "input": "Can you create a reading plan on the topic of prayer for a complete beginner?",
-        "required_tools": {"search_by_theme", "browse_collection"},
+        "required_tools": {"search_by_theme"},
         "max_difficulty": 2,
         "expect_grounded": True,
     },

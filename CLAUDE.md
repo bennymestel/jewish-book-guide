@@ -18,6 +18,11 @@ GOOGLE_API_KEY=...       # required
 YOUTUBE_API_KEY=...      # optional; YouTube search is skipped if absent
 DATABASE_URL=...         # defaults to postgresql://localhost/books
 GEMINI_MODEL=...         # defaults to gemini-3.1-flash-lite-preview
+
+# LangSmith observability (optional but recommended)
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=...     # your LangSmith API key
+LANGCHAIN_PROJECT=...     # defaults to jewish-book-guide
 ```
 
 ## Running the stack
@@ -35,8 +40,12 @@ The frontend is served at `http://localhost:8000` by the FastAPI server (`GET /`
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run tests (no DB or network required)
+# Run unit tests (no DB or network required)
 pytest
+
+# Run end-to-end agent evals (needs the stack running + GOOGLE_API_KEY)
+python -m evals.run_evals
+```
 
 ## Architecture: data flow
 

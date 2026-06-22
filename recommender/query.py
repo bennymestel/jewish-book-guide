@@ -150,7 +150,11 @@ def recommend(
         seed_vectors = []
         for seed in seeds:
             if seed.get("embedding") is not None:
-                seed_vectors.append(seed["embedding"])
+                raw = seed["embedding"]
+                # psycopg returns pgvector columns as strings; parse to float list
+                if isinstance(raw, str):
+                    raw = [float(x) for x in raw.strip("[]").split(",")]
+                seed_vectors.append(raw)
             else:
                 # Fallback: encode a profile on the fly
                 vec = model.encode([build_profile(seed)])[0]

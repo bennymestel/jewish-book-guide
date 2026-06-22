@@ -78,6 +78,15 @@ The evals run sample questions through the real agent graph, checking tool traje
 
 > **Using Claude Code?** Just tell it to start or spin up the project — it will handle setup automatically.
 
+## Testing & evaluation
+
+```bash
+pytest                      # unit tests (no DB or network)
+python -m evals.run_evals   # end-to-end agent evals (needs the stack + GOOGLE_API_KEY)
+```
+
+The evals run sample questions through the real agent graph, checking tool trajectory, grounding (titles exist in the DB), and difficulty constraints. Exits non-zero on failure.
+
 ## Project structure
 
 ```

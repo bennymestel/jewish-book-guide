@@ -6,7 +6,6 @@ tool calls and grounding without needing to re-run the graph.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 import os
 import sys

@@ -67,6 +67,8 @@ docker compose up -d
 
 This starts three services: PostgreSQL (with pgvector), the books MCP server on port 8001, and the FastAPI app on port 8000.
 
+> **Using Claude Code?** Just tell it to start or spin up the project — it will handle setup automatically.
+
 ## Testing & evaluation
 
 ```bash
@@ -75,8 +77,6 @@ python -m evals.run_evals   # end-to-end agent evals (needs the stack + GOOGLE_A
 ```
 
 The evals run sample questions through the real agent graph, checking tool trajectory, grounding (titles exist in the DB), and difficulty constraints. Exits non-zero on failure.
-
-> **Using Claude Code?** Just tell it to start or spin up the project — it will handle setup automatically.
 
 ## Project structure
 

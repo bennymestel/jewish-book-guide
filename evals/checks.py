@@ -34,15 +34,16 @@ def extract_titles(reply: str) -> set[str]:
     """
     Extract candidate book titles from a reply string.
 
-    Recommendations are formatted "Title - Author - Difficulty: N - desc", usually
-    rendered as a numbered or bulleted list. On each such line we capture the segment
-    before the first dash/colon, yielding candidate strings to check for grounding.
+    Recommendations are formatted "Title - Author - Difficulty: N - desc" per the
+    system prompt. They may appear as plain lines, or prefixed by a list marker.
+    We capture the segment before the first dash, then strip markdown bold markers.
     """
     titles: set[str] = set()
 
-    # Numbered or bulleted list items: capture segment before the first dash/colon/newline.
-    for match in re.finditer(r"^[\d\-\*•]+\.?\s+([^:\n\-]+)", reply, re.MULTILINE):
-        candidate = match.group(1).strip()
+    # Match optional list prefix (e.g. "1. " or "* " or "- "), then capture up to the first dash.
+    # Also matches bare "Title - ..." lines with no list prefix.
+    for match in re.finditer(r"^(?:[\d\-\*•]+\.?\s+)?(\*{0,2}[^:\n\-]{4,79}\*{0,2})\s+-", reply, re.MULTILINE):
+        candidate = re.sub(r"\*+", "", match.group(1)).strip()
         if 3 < len(candidate) < 80:
             titles.add(candidate)
 
@@ -61,6 +62,19 @@ def assert_grounded(titles: set[str]) -> tuple[bool, list[str]]:
         if find_book(title) is None:
             unresolved.append(title)
     return (len(unresolved) == 0, unresolved)
+
+
+def assert_tool_args(
+    messages: list,
+    predicate,
+) -> tuple[bool, str]:
+    """
+    Run a case-supplied predicate over the list of tool calls.
+    The predicate receives [{name, args}, ...] and returns (bool, reason_str).
+    Use this to assert on specific argument values, e.g. that both seeds were passed.
+    """
+    calls = tools_called(messages)
+    return predicate(calls)
 
 
 def assert_difficulty_max(titles: set[str], max_diff: int) -> tuple[bool, list[str]]:

@@ -76,7 +76,7 @@ pytest                      # unit tests (no DB or network)
 python -m evals.run_evals   # end-to-end agent evals (needs the stack + GOOGLE_API_KEY)
 ```
 
-The evals run sample questions through the real agent graph, checking tool trajectory, grounding (titles exist in the DB), and difficulty constraints. Exits non-zero on failure.
+The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality for open-ended cases.
 
 ## Project structure
 

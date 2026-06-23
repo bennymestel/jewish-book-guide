@@ -82,4 +82,20 @@ CASES: list[dict] = [
         "max_difficulty": 2,
         "expect_grounded": True,
     },
+    {
+        "id": "sefaria_text_passage",
+        # Tests get_text (passage retrieval), not just catalogue lookup.
+        "input": "Can you quote the opening verses of the book of Vayikra?",
+        "required_tools": {"get_text"},
+        "max_difficulty": None,
+        "expect_grounded": False,
+    },
+    {
+        "id": "youtube_video_search",
+        # Tests searchVideos — the only YouTube tool; requires YOUTUBE_API_KEY.
+        "input": "Can you find me a video lecture or shiur about Tanya?",
+        "required_tools": {"searchVideos"},
+        "max_difficulty": None,
+        "expect_grounded": False,
+    },
 ]

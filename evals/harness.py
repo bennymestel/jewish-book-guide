@@ -56,3 +56,19 @@ async def run_message(graph, message: str) -> tuple[str, list]:
     messages = result["messages"]
     reply = _extract_reply(messages)
     return reply, messages
+
+
+async def run_conversation(graph, turns: list[str]) -> tuple[str, list]:
+    """
+    Thread multiple user turns through the graph, carrying message history forward.
+    Returns (final_reply_text, full_message_history_across_all_turns).
+    Use for multi-turn eval cases (cases with "inputs" instead of "input").
+    """
+    all_messages: list = []
+    reply = ""
+    for turn in turns:
+        state = {"messages": all_messages + [HumanMessage(content=turn)]}
+        result = await graph.ainvoke(state)
+        all_messages = result["messages"]
+        reply = _extract_reply(all_messages)
+    return reply, all_messages

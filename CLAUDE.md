@@ -18,6 +18,7 @@ GOOGLE_API_KEY=...       # required
 YOUTUBE_API_KEY=...      # optional; YouTube search is skipped if absent
 DATABASE_URL=...         # defaults to postgresql://localhost/books
 GEMINI_MODEL=...         # defaults to gemini-3.1-flash-lite-preview
+JUDGE_MODEL=...          # optional; defaults to GEMINI_MODEL
 
 # LangSmith observability (optional but recommended)
 LANGCHAIN_TRACING_V2=true
@@ -43,7 +44,7 @@ pip install -e ".[dev]"
 # Run unit tests (no DB or network required)
 pytest
 
-# Run end-to-end agent evals (needs the stack running + GOOGLE_API_KEY)
+# End-to-end agent evals: tool trajectory, grounding, difficulty, LLM-as-judge (needs stack + GOOGLE_API_KEY)
 python -m evals.run_evals
 ```
 

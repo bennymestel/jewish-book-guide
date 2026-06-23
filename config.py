@@ -9,6 +9,7 @@ DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/books")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
+JUDGE_MODEL = os.getenv("JUDGE_MODEL", GEMINI_MODEL)
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"

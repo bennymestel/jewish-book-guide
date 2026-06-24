@@ -25,6 +25,8 @@ Print exactly:
 App is up and running. All tests passed.
 
 → http://localhost:8000
+
+To evaluate agent quality: python -m evals.run_evals  (needs GOOGLE_API_KEY — uses Gemini quota)
 ```
 
 **On `## SUMMARY` line `FAILED: docker timeout`:**

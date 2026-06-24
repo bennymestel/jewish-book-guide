@@ -23,7 +23,6 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_core.messages import ToolMessage
 from rich.console import Console
 from rich.table import Table
 from rich import box
@@ -36,6 +35,7 @@ from evals.checks import (
     extract_titles,
     assert_grounded,
     assert_difficulty_max,
+    extract_tool_context,
 )
 from evals.judge import judge_reply
 from evals.cases import CASES
@@ -46,12 +46,6 @@ console = Console()
 
 def _tick(passed: bool) -> str:
     return "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
-
-
-def _extract_tool_context(messages: list) -> str:
-    """Concatenate all ToolMessage outputs for use as judge context in faithfulness checks."""
-    parts = [m.content for m in messages if isinstance(m, ToolMessage) and m.content]
-    return "\n\n".join(str(p) for p in parts)
 
 
 async def run_evals() -> bool:
@@ -130,7 +124,7 @@ async def run_evals() -> bool:
 
         # LLM-as-judge quality check
         if case.get("judge"):
-            tool_context = _extract_tool_context(messages)
+            tool_context = extract_tool_context(messages)
             quality_ok, quality_reason = await judge_reply(
                 input=user_input,
                 reply=reply,

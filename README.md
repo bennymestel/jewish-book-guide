@@ -72,11 +72,12 @@ This starts three services: PostgreSQL (with pgvector), the books MCP server on 
 ## Testing & evaluation
 
 ```bash
-pytest                      # unit tests (no DB or network)
-python -m evals.run_evals   # end-to-end agent evals (needs the stack + GOOGLE_API_KEY)
+pytest                          # unit tests (no DB or network)
+python -m evals.run_evals       # end-to-end agent evals, offline table (needs stack + GOOGLE_API_KEY)
+python -m evals.langsmith_eval  # same evals via LangSmith dashboard (also needs LANGCHAIN_API_KEY)
 ```
 
-The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality for open-ended cases.
+The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality. Run locally for a quick offline table, or via LangSmith for a tracked experiment dashboard with per-case scores and run-over-run comparison.
 
 ## Project structure
 
@@ -106,4 +107,4 @@ tests/          Unit test suite
 | MCP (built) | Books tool server (streamable HTTP) |
 | Data source | Sefaria API |
 | Agent Skill | Claude Code Skill (.claude/skills/) |
-| Observability | LangSmith (LangGraph tracing) |
+| Observability | LangSmith (Tracing + Datasets & Experiments) |

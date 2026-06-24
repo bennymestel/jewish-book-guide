@@ -11,7 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 
 def tools_called(messages: list) -> list[dict]:
@@ -75,6 +75,12 @@ def assert_tool_args(
     """
     calls = tools_called(messages)
     return predicate(calls)
+
+
+def extract_tool_context(messages: list) -> str:
+    """Concatenate all ToolMessage outputs for use as judge context in faithfulness checks."""
+    parts = [m.content for m in messages if isinstance(m, ToolMessage) and m.content]
+    return "\n\n".join(str(p) for p in parts)
 
 
 def assert_difficulty_max(titles: set[str], max_diff: int) -> tuple[bool, list[str]]:

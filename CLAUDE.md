@@ -44,8 +44,11 @@ pip install -e ".[dev]"
 # Run unit tests (no DB or network required)
 pytest
 
-# End-to-end agent evals: tool trajectory, grounding, difficulty, LLM-as-judge (needs stack + GOOGLE_API_KEY)
+# End-to-end agent evals — offline table (needs stack + GOOGLE_API_KEY)
 python -m evals.run_evals
+
+# Same evals via LangSmith Datasets & Experiments (also needs LANGCHAIN_API_KEY)
+python -m evals.langsmith_eval
 ```
 
 ## Architecture: data flow

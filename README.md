@@ -1,6 +1,6 @@
 # Jewish Book Guide
 
-A RAG-based AI agent for exploring and recommending Jewish texts — built with LangGraph, pgvector, Google Gemini, and MCP tool integration. Developed as a portfolio project demonstrating AI agent architecture, vector search, and MCP server development.
+An AI agent for exploring and recommending Jewish texts, built with LangGraph, pgvector, Google Gemini, and custom MCP servers — with both a flat ReAct and a multi-agent supervisor architecture. Developed as a portfolio project demonstrating agent orchestration, RAG-based vector search, and MCP server development.
 
 
 https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
@@ -8,12 +8,18 @@ https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
 
 ## What it does
 
-- Maintains a curated collection of ~50 canonical Jewish texts ingested from the [Sefaria](https://www.sefaria.org) library API
-- Generates vector embeddings (sentence-transformers) and stores them in PostgreSQL with [pgvector](https://github.com/pgvector/pgvector)
-- Runs a **LangGraph ReAct agent** powered by Google Gemini that converses with users and calls three MCP servers: a custom **books MCP server** for RAG-based lookup and recommendations, **Sefaria** for Jewish texts, and **YouTube** for lectures
-- Includes a **Claude Code Skill** for hands-free project setup — just tell it to start the project
+- Recommends similar books and looks up, browses, or searches the curated ~50-book collection — RAG-based vector search, filterable by category, difficulty, or theme
+- Searches the broader [Sefaria](https://www.sefaria.org) library for books and passages beyond the curated collection, and fetches text references
+- Finds relevant YouTube shiurim/lectures on a book or topic
+- Holds a multi-turn conversation via chat, remembering context within a session
 
 ## Architecture
+
+The API supports two interchangeable graphs, selected per request with `POST /chat?mode=simple|multi` (default `simple`).
+
+### `simple` — flat ReAct agent
+
+One agent sees every tool from all three MCP servers directly.
 
 ```
 User
@@ -37,9 +43,41 @@ tool calls
  └──► YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)
 ```
 
-**Recommendation engine** (`recommender/query.py`) uses a two-stage approach:
-1. Vector cosine similarity retrieves the top 20 candidates
-2. Re-ranking applies weighted bonuses for category match, subcategory match, theme overlap, and difficulty alignment
+### `multi` — supervisor with specialist agents
+
+A supervisor ReAct agent (`agent/multi_graph.py`) replaces the "tool calls" step above with three delegation tools — `consult_books`, `consult_sefaria`, `consult_youtube` — each backed by its own full ReAct agent scoped to one MCP server's tools:
+
+```
+User → FastAPI server → Supervisor (ReAct agent, Google Gemini)
+                          │   tools = consult_books, consult_sefaria, consult_youtube
+                          │
+              ┌───────────┼───────────────┐
+              ▼           ▼               ▼
+        Books agent   Sefaria agent   YouTube agent
+        (4 books      (all Sefaria    (searchVideos
+         tools)         tools)         tool)
+```
+
+Agents-as-tools beats one flat agent: each specialist only sees its own tools, and independent `consult_*` calls in one turn run concurrently.
+
+## Data pipeline
+
+The books MCP server's `get_recommendations` tool is powered by a RAG pipeline built ahead of time, independent of the agent:
+
+```
+Sefaria API ──► ingestion/fetch_sefaria.py ──► books table (PostgreSQL)
+                                                     │
+                                    ingestion/embed.py: build_profile()
+                                    title + author + themes + description
+                                                     │
+                                    sentence-transformers (all-MiniLM-L6-v2)
+                                                     ▼
+                                          books.embedding (pgvector, 384-dim)
+```
+
+`recommender/query.py` then serves recommendations in two stages:
+1. **Vector search** — pgvector cosine similarity retrieves the top 20 candidates
+2. **Re-rank** — weighted bonuses/penalties (`config.py`, `WEIGHT_*`) for category match, subcategory match, theme overlap, and difficulty proximity
 
 ## Setup
 
@@ -67,17 +105,14 @@ docker compose up -d
 
 This starts three services: PostgreSQL (with pgvector), the books MCP server on port 8001, and the FastAPI app on port 8000.
 
-> **Using Claude Code?** Just tell it to start or spin up the project — it will handle setup automatically.
+> **Using Claude Code?** This repo includes a custom Skill (`.claude/skills/initialize-project`) — just tell it to start or spin up the project and it'll handle setup automatically.
 
 ## Testing & evaluation
 
 ```bash
-pytest                                # unit tests (no DB or network)
-python -m evals.run_evals             # end-to-end agent evals, offline table (needs stack + GOOGLE_API_KEY)
-python -m evals.run_evals --mode multi    # same evals against the multi-agent supervisor graph
-python -m evals.run_evals --mode both     # run both graphs and print a side-by-side comparison
-python -m evals.langsmith_eval         # same evals via LangSmith dashboard (also needs LANGCHAIN_API_KEY)
-python -m evals.langsmith_eval --mode multi
+pytest                          # unit tests (no DB or network)
+python -m evals.run_evals       # end-to-end agent evals, offline table (needs stack + GOOGLE_API_KEY)
+python -m evals.langsmith_eval  # same evals via LangSmith dashboard (also needs LANGCHAIN_API_KEY)
 ```
 
 The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality. Run locally for a quick offline table, or via LangSmith for a tracked experiment dashboard with per-case scores and run-over-run comparison. `--mode` selects which graph to evaluate: `simple` (default, the flat ReAct graph) or `multi` (the supervisor/agents-as-tools graph); `both` is only available for `run_evals`.
@@ -85,7 +120,7 @@ The evals run single- and multi-turn questions through the real agent graph, che
 ## Project structure
 
 ```
-agent/          LangGraph agent (graph, prompts, FastAPI server)
+agent/          LangGraph agent (graph.py, multi_graph.py supervisor, prompts, FastAPI server)
 mcp_server/     Standalone MCP server exposing four tools, a resource, and two prompts
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
 recommender/    Two-stage recommendation engine

@@ -38,6 +38,7 @@ services:
       BOOKS_MCP_URL: http://mcp:8001/mcp
     volumes:
       - hf_cache:/root/.cache/huggingface
+      - ./frontend:/app/frontend
     depends_on:
       db:
         condition: service_healthy

@@ -88,7 +88,7 @@
     }
 
     .new-chat-btn {
-      margin-left: auto;
+      margin-left: 0;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       color: #64748b;
@@ -400,6 +400,38 @@
       letter-spacing: 0.1px;
     }
 
+    /* ── Mode toggle ── */
+    .header-spacer { flex: 1; }
+
+    .mode-toggle {
+      display: flex;
+      align-items: center;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 2px;
+    }
+    .mode-btn {
+      background: none;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-family: var(--font);
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .mode-btn.active {
+      background: var(--surface);
+      color: var(--text);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .mode-btn:not(.active):hover { color: var(--text); }
+
     /* scrollbar */
     #messages::-webkit-scrollbar { width: 5px; }
     #messages::-webkit-scrollbar-track { background: transparent; }
@@ -418,6 +450,11 @@
     </div>
     <div class="logo-text">
       Jewish Book Guide
+    </div>
+    <div class="header-spacer"></div>
+    <div class="mode-toggle" role="group" aria-label="Agent mode">
+      <button class="mode-btn active" id="btn-simple" onclick="setMode('simple')">Simple</button>
+      <button class="mode-btn" id="btn-multi" onclick="setMode('multi')">Multi-agent</button>
     </div>
     <button class="new-chat-btn" onclick="newChat()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -472,6 +509,14 @@
   const API_BASE = "";
   let sessionId = crypto.randomUUID();
   let busy = false;
+  let mode = "simple";
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById("btn-simple").classList.toggle("active", m === "simple");
+    document.getElementById("btn-multi").classList.toggle("active", m === "multi");
+    newChat();
+  }
 
   const input = document.getElementById("input");
   const sendBtn = document.getElementById("send-btn");
@@ -597,7 +642,7 @@
     const typingBubble = showTyping();
 
     try {
-      const res = await fetch(`${API_BASE}/chat/stream`, {
+      const res = await fetch(`${API_BASE}/chat/stream?mode=${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ session_id: sessionId, message: text }),

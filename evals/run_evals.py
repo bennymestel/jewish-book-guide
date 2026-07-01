@@ -2,7 +2,7 @@
 Eval runner for the Jewish Book Guide agent.
 
 Usage:
-    python -m evals.run_evals
+    python -m evals.run_evals [--mode simple|multi|both]
 
 Each case is checked with up to five passes:
   - Tools:      at least one required tool was called
@@ -16,6 +16,7 @@ Exit code 1 if any case fails.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import sys
@@ -48,12 +49,15 @@ def _tick(passed: bool) -> str:
     return "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
 
 
-async def run_evals() -> bool:
-    logger.info("Building agent graph")
-    graph = await build_eval_graph()
+async def run_evals(mode: str = "simple") -> tuple[bool, int, int]:
+    """Run the full case suite against one graph mode ("simple" or "multi").
+    Returns (all_passed, passed_count, total)."""
+    logger.info("Building agent graph (mode=%s)", mode)
+    graph = await build_eval_graph(mode)
+    flatten_subagents = mode == "multi"
     logger.info("Running %d cases", len(CASES))
 
-    table = Table(box=box.SIMPLE_HEAVY, show_lines=True)
+    table = Table(title=f"mode={mode}", box=box.SIMPLE_HEAVY, show_lines=True)
     table.add_column("Case", style="cyan", no_wrap=True)
     table.add_column("Tools", justify="center")
     table.add_column("Args", justify="center")
@@ -70,10 +74,14 @@ async def run_evals() -> bool:
 
         # Support both single-turn ("input") and multi-turn ("inputs") cases.
         if "inputs" in case:
-            reply, messages = await run_conversation(graph, case["inputs"])
+            reply, messages = await run_conversation(
+                graph, case["inputs"], flatten_subagents=flatten_subagents
+            )
             user_input = " → ".join(case["inputs"])
         else:
-            reply, messages = await run_message(graph, case["input"])
+            reply, messages = await run_message(
+                graph, case["input"], flatten_subagents=flatten_subagents
+            )
             user_input = case["input"]
 
         # Tool trajectory check
@@ -159,7 +167,18 @@ async def run_evals() -> bool:
     total = len(CASES)
     color = "green" if all_passed else "red"
     console.print(f"[bold {color}]{passed_count}/{total} cases passed[/bold {color}]")
-    return all_passed
+    return all_passed, passed_count, total
+
+
+async def run_evals_both() -> bool:
+    """Run the suite against both graphs and print a side-by-side comparison."""
+    simple_passed, simple_count, total = await run_evals("simple")
+    multi_passed, multi_count, _ = await run_evals("multi")
+    console.print(
+        f"\n[bold]simple: {simple_count}/{total} passed   "
+        f"multi: {multi_count}/{total} passed[/bold]"
+    )
+    return simple_passed and multi_passed
 
 
 def main():
@@ -167,7 +186,14 @@ def main():
         level=logging.INFO,
         format="%(levelname)s %(name)s: %(message)s",
     )
-    all_passed = asyncio.run(run_evals())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["simple", "multi", "both"], default="simple")
+    args = parser.parse_args()
+
+    if args.mode == "both":
+        all_passed = asyncio.run(run_evals_both())
+    else:
+        all_passed, _, _ = asyncio.run(run_evals(args.mode))
     sys.exit(0 if all_passed else 1)
 
 

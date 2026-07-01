@@ -45,10 +45,13 @@ pip install -e ".[dev]"
 pytest
 
 # End-to-end agent evals — offline table (needs stack + GOOGLE_API_KEY)
-python -m evals.run_evals
+python -m evals.run_evals                # simple (flat ReAct) graph, default
+python -m evals.run_evals --mode multi   # multi-agent supervisor graph
+python -m evals.run_evals --mode both    # both, side by side
 
 # Same evals via LangSmith Datasets & Experiments (also needs LANGCHAIN_API_KEY)
 python -m evals.langsmith_eval
+python -m evals.langsmith_eval --mode multi
 ```
 
 ## Architecture: data flow

@@ -19,7 +19,7 @@ from agent.state import AgentState
 logger = logging.getLogger(__name__)
 
 
-async def build_graph(tools: list = []):
+async def build_graph(tools: list = [], system_prompt: str = SYSTEM_PROMPT):
     llm = ChatGoogleGenerativeAI(
         model=config.GEMINI_MODEL,
         google_api_key=os.environ["GOOGLE_API_KEY"],
@@ -29,7 +29,7 @@ async def build_graph(tools: list = []):
     tool_node = ToolNode(tools)
 
     async def agent_node(state: AgentState) -> dict:
-        messages = [SystemMessage(content=SYSTEM_PROMPT)] + state["messages"]
+        messages = [SystemMessage(content=system_prompt)] + state["messages"]
         response = await llm_with_tools.ainvoke(messages)
         if hasattr(response, "tool_calls") and response.tool_calls:
             for tc in response.tool_calls:

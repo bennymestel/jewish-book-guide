@@ -23,12 +23,13 @@ logging.basicConfig(
 logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERROR)
 
 from langchain_core.messages import HumanMessage
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from agent.graph import build_graph, load_books_tools, load_youtube_tools, load_sefaria_tools
+from agent.multi_graph import build_multi_graph
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +41,13 @@ TOOL_LABELS: dict[str, str] = {
     "get_text": "Fetching passage",
     "get_text_catalogue_info": "Looking up Sefaria catalogue",
     "searchVideos": "Searching YouTube",
+    "consult_books": "Consulting books specialist",
+    "consult_sefaria": "Consulting Sefaria specialist",
+    "consult_youtube": "Consulting YouTube specialist",
 }
 
 _graph = None
+_graph_multi = None
 _mcp_clients: list = []
 
 # In-memory session store: session_id -> AgentState
@@ -51,12 +56,13 @@ _sessions: dict[str, dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _graph, _mcp_clients
+    global _graph, _graph_multi, _mcp_clients
     books_tools, books_client = await load_books_tools()
     youtube_tools, youtube_client = await load_youtube_tools()
     sefaria_tools, sefaria_client = await load_sefaria_tools()
     _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
     _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
+    _graph_multi = await build_multi_graph(books_tools, sefaria_tools, youtube_tools)
     yield
 
 
@@ -97,12 +103,13 @@ HISTORY_LIMIT = 20  # keep last 20 messages (~10 exchanges) to cap token usage
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest) -> ChatResponse:
+async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
+    graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
 
     try:
-        result = await _graph.ainvoke(state)
+        result = await graph.ainvoke(state)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -121,7 +128,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
 
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest) -> StreamingResponse:
+async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> StreamingResponse:
+    graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
 
@@ -129,7 +137,7 @@ async def chat_stream(req: ChatRequest) -> StreamingResponse:
         final_state = None
         last_ai_text = None
         try:
-            async for event in _graph.astream_events(state, version="v2"):
+            async for event in graph.astream_events(state, version="v2"):
                 kind = event["event"]
                 logger.debug("[STREAM] event=%s name=%s", kind, event.get("name"))
                 if kind == "on_tool_start":

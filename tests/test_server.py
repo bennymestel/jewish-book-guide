@@ -109,3 +109,86 @@ async def test_reset_nonexistent_session(client):
     r = await client.post("/chat/reset", json={"session_id": "ghost-session"})
     assert r.status_code == 200
     assert r.json()["status"] == "cleared"
+
+
+# ── Multi-graph fixtures ───────────────────────────────────────────────────────
+
+@pytest.fixture
+def mock_multi_graph():
+    """A fake multi-agent graph that always replies with a fixed message."""
+    graph = MagicMock()
+    graph.ainvoke = AsyncMock(
+        return_value={"messages": [AIMessage(content="Multi-agent reply.")]}
+    )
+    return graph
+
+
+@pytest_asyncio.fixture
+async def client_multi(mock_graph, mock_multi_graph):
+    """AsyncClient with both simple and multi graphs mocked out."""
+    import agent.server as server_module
+
+    with (
+        patch("agent.server.load_books_tools", new=AsyncMock(return_value=([], None))),
+        patch("agent.server.load_youtube_tools", new=AsyncMock(return_value=([], None))),
+        patch("agent.server.load_sefaria_tools", new=AsyncMock(return_value=([], None))),
+        patch("agent.server.build_graph", new=AsyncMock(return_value=mock_graph)),
+        patch("agent.server.build_multi_graph", new=AsyncMock(return_value=mock_multi_graph)),
+        patch.object(server_module, "_graph", mock_graph),
+        patch.object(server_module, "_graph_multi", mock_multi_graph),
+    ):
+        from agent.server import app
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
+
+
+# ── /chat?mode=multi ───────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_chat_mode_multi_uses_multi_graph(client_multi, mock_graph, mock_multi_graph):
+    r = await client_multi.post("/chat?mode=multi", json={"session_id": "m1", "message": "hi"})
+    assert r.status_code == 200
+    assert "Multi-agent" in r.json()["reply"]
+    mock_multi_graph.ainvoke.assert_called_once()
+    mock_graph.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chat_default_mode_is_simple(client_multi, mock_graph, mock_multi_graph):
+    r = await client_multi.post("/chat", json={"session_id": "m2", "message": "hi"})
+    assert r.status_code == 200
+    mock_graph.ainvoke.assert_called_once()
+    mock_multi_graph.ainvoke.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_chat_mode_multi_error_returns_500(client_multi, mock_multi_graph):
+    mock_multi_graph.ainvoke.side_effect = RuntimeError("specialist failed")
+    r = await client_multi.post("/chat?mode=multi", json={"session_id": "m3", "message": "hi"})
+    assert r.status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_mode_multi(client_multi, mock_multi_graph):
+    """POST /chat/stream?mode=multi should yield a reply event."""
+    # astream_events must be a plain callable returning an async generator, not an AsyncMock
+    mock_multi_graph.astream_events = MagicMock(return_value=_fake_stream())
+    r = await client_multi.post(
+        "/chat/stream?mode=multi", json={"session_id": "m4", "message": "hi"}
+    )
+    assert r.status_code == 200
+    assert b"reply" in r.content
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+async def _fake_stream():
+    """Minimal astream_events output: one on_chain_end event with a messages key."""
+    from langchain_core.messages import AIMessage as AI
+    yield {
+        "event": "on_chain_end",
+        "name": "LangGraph",
+        "data": {"output": {"messages": [AI(content="streamed multi reply")]}},
+    }

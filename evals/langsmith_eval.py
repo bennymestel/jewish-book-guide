@@ -2,7 +2,7 @@
 LangSmith evaluation path for the Jewish Book Guide agent.
 
 Usage:
-    python -m evals.langsmith_eval
+    python -m evals.langsmith_eval [--mode simple|multi]
 
 Syncs CASES to a LangSmith dataset and runs a named experiment with five evaluators
 (tools, args, grounded, difficulty, quality) that reuse the same logic as the local
@@ -13,6 +13,7 @@ Requires LANGCHAIN_API_KEY. For an offline run with no LangSmith account:
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
@@ -47,8 +48,9 @@ logger = logging.getLogger(__name__)
 # CASES keyed by id so evaluators can look up non-serializable lambdas (tool_arg_check).
 _cases_by_id: dict[str, dict] = {c["id"]: c for c in CASES}
 
-# Module-level graph — built once before aevaluate kicks off.
+# Module-level graph + mode — built once before aevaluate kicks off.
 _graph = None
+_flatten_subagents = False
 
 
 # ── Dataset sync ──────────────────────────────────────────────────────────────
@@ -98,9 +100,13 @@ async def _target(inputs: dict) -> dict:
     and tool context so evaluators receive JSON-serialisable outputs.
     """
     if "inputs" in inputs:
-        reply, messages = await run_conversation(_graph, inputs["inputs"])
+        reply, messages = await run_conversation(
+            _graph, inputs["inputs"], flatten_subagents=_flatten_subagents
+        )
     else:
-        reply, messages = await run_message(_graph, inputs["input"])
+        reply, messages = await run_message(
+            _graph, inputs["input"], flatten_subagents=_flatten_subagents
+        )
 
     return {
         "reply": reply,
@@ -181,7 +187,7 @@ async def quality_evaluator(outputs: dict, reference_outputs: dict) -> dict:
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 
-async def run_langsmith_evals() -> None:
+async def run_langsmith_evals(mode: str = "simple") -> None:
     if not os.environ.get("LANGCHAIN_API_KEY"):
         print(
             "LANGCHAIN_API_KEY is not set — cannot run LangSmith evaluation.\n"
@@ -193,9 +199,10 @@ async def run_langsmith_evals() -> None:
     client = Client()
     _sync_dataset(client)
 
-    global _graph
-    logger.info("Building agent graph")
-    _graph = await build_eval_graph()
+    global _graph, _flatten_subagents
+    logger.info("Building agent graph (mode=%s)", mode)
+    _graph = await build_eval_graph(mode)
+    _flatten_subagents = mode == "multi"
 
     logger.info(
         "Starting LangSmith experiment (max_concurrency=0 — sequential, "
@@ -211,10 +218,10 @@ async def run_langsmith_evals() -> None:
             difficulty_evaluator,
             quality_evaluator,
         ],
-        experiment_prefix=EXPERIMENT_PREFIX,
+        experiment_prefix=f"{EXPERIMENT_PREFIX}-{mode}",
         description=(
             "End-to-end agent evals: tool trajectory, tool args, grounding, "
-            "difficulty constraints, LLM-as-judge quality."
+            f"difficulty constraints, LLM-as-judge quality. (mode={mode})"
         ),
         max_concurrency=0,   # sequential — protects Gemini free-tier quota
         num_repetitions=1,
@@ -228,7 +235,10 @@ async def run_langsmith_evals() -> None:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    asyncio.run(run_langsmith_evals())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["simple", "multi"], default="simple")
+    args = parser.parse_args()
+    asyncio.run(run_langsmith_evals(args.mode))
 
 
 if __name__ == "__main__":

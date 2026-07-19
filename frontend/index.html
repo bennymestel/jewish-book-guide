@@ -536,6 +536,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
 <script>
+  marked.setOptions({ breaks: true });
+
   const API_BASE = "";
   let sessionId = crypto.randomUUID();
   let busy = false;

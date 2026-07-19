@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import timedelta
 
 from langchain_core.messages import SystemMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -18,12 +19,19 @@ from agent.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+# A hung Gemini call or MCP server would otherwise pin a request (and, on a
+# rate-limited public deployment, a slot) indefinitely.
+LLM_TIMEOUT_SECONDS = 30
+MCP_TIMEOUT = timedelta(seconds=15)
+MCP_SSE_TIMEOUT_SECONDS = 15  # mcp's sse_client only accepts float, unlike streamable_http
+
 
 async def build_graph(tools: list = [], system_prompt: str = SYSTEM_PROMPT):
     llm = ChatGoogleGenerativeAI(
         model=config.GEMINI_MODEL,
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
+        timeout=LLM_TIMEOUT_SECONDS,
     )
     llm_with_tools = llm.bind_tools(tools)
     tool_node = ToolNode(tools)
@@ -83,12 +91,17 @@ async def load_books_tools() -> tuple[list, object | None]:
     url = os.getenv("BOOKS_MCP_URL", "http://localhost:8001/mcp")
     return await _load_mcp_tools(
         "books",
-        {"transport": "streamable_http", "url": url},
+        {"transport": "streamable_http", "url": url, "timeout": MCP_TIMEOUT, "sse_read_timeout": MCP_TIMEOUT},
     )
 
 
 async def load_sefaria_tools() -> tuple[list, object | None]:
     return await _load_mcp_tools(
         "sefaria-texts",
-        {"transport": "sse", "url": "https://mcp.sefaria.org/sse"},
+        {
+            "transport": "sse",
+            "url": "https://mcp.sefaria.org/sse",
+            "timeout": MCP_SSE_TIMEOUT_SECONDS,
+            "sse_read_timeout": MCP_SSE_TIMEOUT_SECONDS,
+        },
     )

@@ -8,10 +8,12 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,15 +25,56 @@ logging.basicConfig(
 logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERROR)
 
 from langchain_core.messages import HumanMessage
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from agent.graph import build_graph, load_books_tools, load_youtube_tools, load_sefaria_tools
 from agent.multi_graph import build_multi_graph
 
 logger = logging.getLogger(__name__)
+
+# ── Rate limiting: caps per-IP request rate; combined with the daily circuit ───
+# breaker below, this bounds worst-case Gemini spend on a publicly deployed demo.
+limiter = Limiter(key_func=get_remote_address)
+CHAT_RATE_LIMIT = os.getenv("CHAT_RATE_LIMIT", "10/minute;200/day")
+
+
+async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "You're sending messages too quickly — please wait a moment and try again."},
+    )
+
+
+# ── Daily circuit breaker: a hard backstop on total LLM-backed requests/day, ───
+# independent of per-IP limits (which a distributed client could evade).
+# In-process only — resets on restart and does not coordinate across instances;
+# that's fine for a single-instance demo deployment, not a substitute for the
+# hard quota that should also be set on the Gemini API key itself.
+DAILY_REQUEST_LIMIT = int(os.getenv("DAILY_REQUEST_LIMIT", "300"))
+_daily_lock = asyncio.Lock()
+_daily_count = 0
+_daily_day = None
+
+
+async def _check_daily_limit() -> None:
+    global _daily_count, _daily_day
+    today = datetime.now(timezone.utc).date()
+    async with _daily_lock:
+        if _daily_day != today:
+            _daily_day = today
+            _daily_count = 0
+        if _daily_count >= DAILY_REQUEST_LIMIT:
+            raise HTTPException(
+                status_code=503,
+                detail="This demo has reached its daily usage limit — please check back tomorrow, or see the README to run it locally.",
+            )
+        _daily_count += 1
 
 TOOL_LABELS: dict[str, str] = {
     "get_recommendations": "Finding recommendations",
@@ -67,22 +110,29 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Jewish Book Guide", version="1.0", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 
 @app.get("/")
 async def index():
     return FileResponse("frontend/index.html")
 
+# The frontend is served same-origin (API_BASE="" in frontend/index.html), so no
+# browser CORS grant is needed for it to work, locally or deployed. ALLOWED_ORIGINS
+# defaults to empty (i.e. none) rather than "*" so a deployed instance isn't an
+# open API for any other origin to call from browser JS.
+_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
 )
 
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = Field(..., max_length=1000)
 
 
 class ChatResponse(BaseModel):
@@ -103,7 +153,9 @@ HISTORY_LIMIT = 20  # keep last 20 messages (~10 exchanges) to cap token usage
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
+@limiter.limit(CHAT_RATE_LIMIT)
+async def chat(request: Request, req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
+    await _check_daily_limit()
     graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
@@ -128,7 +180,9 @@ async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
 
 
 @app.post("/chat/stream")
-async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> StreamingResponse:
+@limiter.limit(CHAT_RATE_LIMIT)
+async def chat_stream(request: Request, req: ChatRequest, mode: str = Query("simple")) -> StreamingResponse:
+    await _check_daily_limit()
     graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}

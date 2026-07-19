@@ -26,14 +26,6 @@ def _get_model():
     return _model
 
 
-def _era_midpoint(row: dict) -> int | None:
-    s = row.get("comp_date_start")
-    e = row.get("comp_date_end")
-    if s is not None and e is not None:
-        return (s + e) // 2
-    return s or e
-
-
 def _score(candidate: dict, seed: dict, difficulty_pref: int | None) -> float:
     score: float = candidate["cosine_sim"]
 

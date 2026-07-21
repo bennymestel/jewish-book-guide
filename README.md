@@ -152,3 +152,4 @@ tests/          Unit test suite
 | Data source | Sefaria API |
 | Agent Skill | Claude Code Skill (.claude/skills/) |
 | Observability | LangSmith (Tracing + Datasets & Experiments) |
+| Deployment | Google Cloud Run + Supabase (PostgreSQL/pgvector) |

@@ -4,9 +4,8 @@ An AI agent for exploring and recommending Jewish texts, built with LangGraph, p
 
 **[Try it live →](https://jewish-book-guide-887998576030.australia-southeast1.run.app)** — deployed on Google Cloud Run with a Supabase (PostgreSQL + pgvector) backend.
 
-## Demo
 
-https://github.com/user-attachments/assets/2c784e68-0407-4537-b003-b4e6c0e21c38
+https://github.com/user-attachments/assets/46d31470-8a1a-4529-acd8-6373963e8a1c
 
 *Both scenes above run the same tools — the only difference is orchestration. Either graph can serve any query; the mode toggle just picks which one.*
 

@@ -19,6 +19,7 @@ import psycopg.rows
 from mcp.server.fastmcp import FastMCP
 
 import config
+import db
 
 logging.basicConfig(
     level=logging.DEBUG if os.getenv("LOG_LEVEL", "").upper() == "DEBUG" else logging.INFO,
@@ -174,7 +175,7 @@ def browse_collection(
     """
 
     try:
-        with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+        with db.connect(row_factory=psycopg.rows.dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(sql, params)
                 rows = cur.fetchall()
@@ -208,7 +209,7 @@ def search_by_theme(theme: str, limit: int = 8) -> str:
     Returns books whose themes array contains the given theme."""
     logger.info("[TOOL] search_by_theme: theme=%r limit=%d", theme, limit)
     try:
-        with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+        with db.connect(row_factory=psycopg.rows.dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -254,7 +255,7 @@ def all_books() -> str:
     Returns every book with title, author, category, difficulty, themes, and description.
     Fetch this once to have the complete dataset available as context."""
     try:
-        with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+        with db.connect(row_factory=psycopg.rows.dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT title_en, author_en, category, subcategory,
@@ -323,4 +324,10 @@ Keep the total response under 200 words."""
 
 
 if __name__ == "__main__":
+    from recommender.query import warm_model
+
+    logger.info("Warming embedding model...")
+    warm_model()
+    logger.info("Embedding model ready.")
+
     mcp.run(transport="streamable-http")

@@ -8,10 +8,12 @@ Endpoints:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -25,13 +27,50 @@ logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERR
 from langchain_core.messages import HumanMessage
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
+import db
 from agent.graph import build_graph, load_books_tools, load_youtube_tools, load_sefaria_tools
 from agent.multi_graph import build_multi_graph
 
 logger = logging.getLogger(__name__)
+
+# ── Daily circuit breaker: a hard backstop on total LLM-backed requests/day. ───
+# In-process only — resets on restart and does not coordinate across instances;
+# that's fine for a single-instance demo deployment, not a substitute for the
+# hard quota that should also be set on the Gemini API key itself.
+DAILY_REQUEST_LIMIT = int(os.getenv("DAILY_REQUEST_LIMIT", "300"))
+_daily_lock = asyncio.Lock()
+_daily_count = 0
+_daily_day = None
+
+
+async def _check_daily_limit() -> None:
+    global _daily_count, _daily_day
+    today = datetime.now(timezone.utc).date()
+    async with _daily_lock:
+        if _daily_day != today:
+            _daily_day = today
+            _daily_count = 0
+        if _daily_count >= DAILY_REQUEST_LIMIT:
+            raise HTTPException(
+                status_code=503,
+                detail="This demo has reached its daily usage limit — please check back tomorrow, or see the README to run it locally.",
+            )
+        _daily_count += 1
+
+
+QUOTA_MESSAGE = (
+    "The demo is temporarily out of AI capacity — it runs on a limited free quota. "
+    "Please try again in a little while, or see the README to run it locally."
+)
+
+
+def _is_quota_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(s in text for s in ("resourceexhausted", "quota", "rate limit", "429", "exhausted"))
+
 
 TOOL_LABELS: dict[str, str] = {
     "get_recommendations": "Finding recommendations",
@@ -57,9 +96,9 @@ _sessions: dict[str, dict] = {}
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _graph, _graph_multi, _mcp_clients
-    books_tools, books_client = await load_books_tools()
-    youtube_tools, youtube_client = await load_youtube_tools()
-    sefaria_tools, sefaria_client = await load_sefaria_tools()
+    (books_tools, books_client), (youtube_tools, youtube_client), (sefaria_tools, sefaria_client) = (
+        await asyncio.gather(load_books_tools(), load_youtube_tools(), load_sefaria_tools())
+    )
     _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
     _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
     _graph_multi = await build_multi_graph(books_tools, sefaria_tools, youtube_tools)
@@ -72,17 +111,22 @@ app = FastAPI(title="Jewish Book Guide", version="1.0", lifespan=lifespan)
 async def index():
     return FileResponse("frontend/index.html")
 
+# The frontend is served same-origin (API_BASE="" in frontend/index.html), so no
+# browser CORS grant is needed for it to work, locally or deployed. ALLOWED_ORIGINS
+# defaults to empty (i.e. none) rather than "*" so a deployed instance isn't an
+# open API for any other origin to call from browser JS.
+_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    allow_methods=["POST"],
+    allow_headers=["Content-Type"],
 )
 
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = Field(..., max_length=1000)
 
 
 class ChatResponse(BaseModel):
@@ -104,6 +148,7 @@ HISTORY_LIMIT = 20  # keep last 20 messages (~10 exchanges) to cap token usage
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
+    await _check_daily_limit()
     graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
@@ -111,6 +156,8 @@ async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
     try:
         result = await graph.ainvoke(state)
     except Exception as e:
+        if _is_quota_error(e):
+            raise HTTPException(status_code=503, detail=QUOTA_MESSAGE)
         raise HTTPException(status_code=500, detail=str(e))
 
     _sessions[req.session_id] = result
@@ -129,6 +176,7 @@ async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
 
 @app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> StreamingResponse:
+    await _check_daily_limit()
     graph = _graph_multi if mode == "multi" else _graph
     prev = _sessions.get(req.session_id, {"messages": []})
     state = {"messages": list(prev["messages"])[-HISTORY_LIMIT:] + [HumanMessage(content=req.message)]}
@@ -166,7 +214,8 @@ async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> Streamin
                         final_state = output
         except Exception as e:
             logger.exception("[STREAM] exception: %s", e)
-            yield f"event: error\ndata: {json.dumps(str(e))}\n\n"
+            msg = QUOTA_MESSAGE if _is_quota_error(e) else str(e)
+            yield f"event: error\ndata: {json.dumps(msg)}\n\n"
             return
 
         if final_state is None:
@@ -200,4 +249,22 @@ async def reset(req: ResetRequest) -> ResetResponse:
 
 @app.get("/health")
 async def health() -> dict:
+    """Liveness: is the process up?"""
     return {"status": "ok"}
+
+
+def _check_db() -> None:
+    with db.connect() as conn:
+        conn.execute("SELECT 1")
+
+
+@app.get("/ready")
+async def ready() -> JSONResponse:
+    """Readiness: can the app actually serve a request right now? Touches the DB (with
+    the bounded timeout from db.connect), so this doubles as the keep-warm target —
+    pinging it periodically keeps both this instance and DB from going idle."""
+    try:
+        await asyncio.to_thread(_check_db)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"status": "error", "db": str(e)})
+    return JSONResponse(status_code=200, content={"status": "ok", "db": "ok"})

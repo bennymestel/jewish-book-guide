@@ -33,7 +33,7 @@ jewish-book-guide = "cli:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agent", "recommender", "ingestion"]
-include = ["cli.py", "config.py"]
+include = ["cli.py", "config.py", "db.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

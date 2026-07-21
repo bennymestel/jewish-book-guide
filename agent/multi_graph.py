@@ -22,7 +22,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
 import config
-from agent.graph import build_graph
+from agent.graph import LLM_TIMEOUT_SECONDS, build_graph
 from agent.prompts_multi import (
     BOOKS_AGENT_PROMPT,
     SEFARIA_AGENT_PROMPT,
@@ -50,6 +50,8 @@ async def build_multi_graph(
         model=config.GEMINI_MODEL,
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
+        timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=2,  # default retry/backoff can outlast Cloud Run's request timeout on sustained 429s
     )
 
     # ── Specialist agents ──────────────────────────────────────────────────────

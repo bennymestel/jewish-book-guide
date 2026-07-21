@@ -7,7 +7,7 @@ An AI agent for exploring and recommending Jewish texts, built with LangGraph, p
 
 https://github.com/user-attachments/assets/46d31470-8a1a-4529-acd8-6373963e8a1c
 
-*Both scenes above run the same tools — the only difference is orchestration. Either graph can serve any query; the mode toggle just picks which one.*
+*Both Simple and Multi-agent mode run the same tools — the toggle just changes how the work is coordinated behind the scenes. Either mode can handle any query.*
 
 
 ## What it does

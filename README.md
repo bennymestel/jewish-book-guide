@@ -131,7 +131,9 @@ recommender/    Two-stage recommendation engine
 db/             PostgreSQL schema
 frontend/       Single-page chat UI (Tailwind CSS)
 config.py       Central config (DB URL, model, re-ranking weights)
+db.py           Shared DB connection helper (bounded connect/statement timeouts)
 cli.py          Typer CLI entry point
+deploy/         Cloud Run deployment script
 evals/          End-to-end eval harness (tool trajectory, grounding, difficulty checks)
 tests/          Unit test suite
 ```

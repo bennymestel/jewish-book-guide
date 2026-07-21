@@ -13,6 +13,7 @@ import psycopg
 import psycopg.rows
 
 import config
+import db
 from ingestion.embed import build_profile
 
 _model = None
@@ -24,6 +25,14 @@ def _get_model():
         from sentence_transformers import SentenceTransformer
         _model = SentenceTransformer(config.EMBEDDING_MODEL)
     return _model
+
+
+def warm_model() -> None:
+    """Load the embedding model now. Importing torch/sentence-transformers and
+    constructing the model takes ~15-20s on first use; calling this at server
+    startup keeps that cost off the event loop during a real tool call, where
+    it can block long enough to drop an in-flight streamable-HTTP session."""
+    _get_model()
 
 
 def _score(candidate: dict, seed: dict, difficulty_pref: int | None) -> float:
@@ -97,7 +106,7 @@ def _get_books_by_titles(conn: psycopg.Connection, titles: list[str]) -> list[di
 
 
 def find_book(title_query: str) -> dict | None:
-    with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+    with db.connect(row_factory=psycopg.rows.dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -131,7 +140,7 @@ def recommend(
     """
     model = _get_model()
 
-    with psycopg.connect(config.DB_URL, row_factory=psycopg.rows.dict_row) as conn:
+    with db.connect(row_factory=psycopg.rows.dict_row) as conn:
         seeds = _get_books_by_titles(conn, seed_titles)
         if not seeds:
             return []

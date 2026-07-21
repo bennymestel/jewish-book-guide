@@ -51,6 +51,7 @@ async def build_multi_graph(
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
         timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=2,  # default retry/backoff can outlast Cloud Run's request timeout on sustained 429s
     )
 
     # ── Specialist agents ──────────────────────────────────────────────────────

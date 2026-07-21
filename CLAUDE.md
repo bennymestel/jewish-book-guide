@@ -86,3 +86,21 @@ The embedding for each book is built by `ingestion/embed.py:build_profile`, whic
 ## Session state
 
 Sessions are stored in `_sessions: dict[str, dict]` in `agent/server.py` — in-memory only, lost on restart. History is trimmed to the last 20 messages per session (`HISTORY_LIMIT`).
+
+## Deployment
+
+Live demo: Cloud Run (project `jewish-book-guide`, region `australia-southeast1`) + Supabase (free tier) as `DATABASE_URL`. Secrets live in Secret Manager (`--set-secrets`), not plaintext env vars.
+
+- Deploy command overrides the Dockerfile `CMD` with `--command deploy/cloudrun-start.sh` — that script is what starts the books MCP server; the Dockerfile's own `CMD` doesn't, and `load_books_tools()` silently swallows that failure.
+- `GET /health` = liveness (no DB). `GET /ready` = readiness (`SELECT 1` via `db.connect()`, bounded timeouts). A Cloud Scheduler job pings `/ready` every ~5 min to keep both Cloud Run and Supabase from going idle. `min-instances=1` is an optional paid upgrade to remove cold starts entirely.
+- Redeploy with:
+  ```bash
+  gcloud run deploy jewish-book-guide \
+    --source . --project=jewish-book-guide --region=australia-southeast1 \
+    --command=deploy/cloudrun-start.sh \
+    --set-env-vars="LANGSMITH_TRACING=true,LANGSMITH_ENDPOINT=https://api.smith.langchain.com,ALLOWED_ORIGINS=https://jewish-book-guide-887998576030.australia-southeast1.run.app,LANGSMITH_PROJECT=Jewish Book Guide" \
+    --set-secrets="GOOGLE_API_KEY=GOOGLE_API_KEY:latest,YOUTUBE_API_KEY=YOUTUBE_API_KEY:latest,LANGCHAIN_API_KEY=LANGCHAIN_API_KEY:latest,DATABASE_URL=DATABASE_URL:latest" \
+    --memory=2Gi --cpu=2 --concurrency=10 --max-instances=20 --timeout=300 \
+    --allow-unauthenticated --quiet
+  ```
+  `--set-env-vars`/`--set-secrets` each replace the full existing set (not additive) — check `gcloud run services describe jewish-book-guide --region=australia-southeast1` first if unsure what's currently set.

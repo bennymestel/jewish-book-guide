@@ -32,6 +32,7 @@ async def build_graph(tools: list = [], system_prompt: str = SYSTEM_PROMPT):
         google_api_key=os.environ["GOOGLE_API_KEY"],
         temperature=0.3,
         timeout=LLM_TIMEOUT_SECONDS,
+        max_retries=2,  # default retry/backoff can outlast Cloud Run's request timeout on sustained 429s
     )
     llm_with_tools = llm.bind_tools(tools)
     tool_node = ToolNode(tools)

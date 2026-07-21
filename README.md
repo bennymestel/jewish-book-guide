@@ -2,6 +2,8 @@
 
 An AI agent for exploring and recommending Jewish texts, built with LangGraph, pgvector, Google Gemini, and custom MCP servers — with both a flat ReAct and a multi-agent supervisor architecture. Developed as a portfolio project demonstrating agent orchestration, RAG-based vector search, and MCP server development.
 
+**[Try it live →](https://jewish-book-guide-887998576030.australia-southeast1.run.app)** — deployed on Google Cloud Run with a Supabase (PostgreSQL + pgvector) backend.
+
 
 https://github.com/user-attachments/assets/b3179790-780c-4acc-9ed7-e36acbc2e05b
 

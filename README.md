@@ -62,7 +62,7 @@ User → FastAPI server → Supervisor (ReAct agent, Google Gemini)
          tools)         tools)         tool)
 ```
 
-Agents-as-tools beats one flat agent: each specialist only sees its own tools, and independent `consult_*` calls in one turn run concurrently.
+Agents-as-tools trades latency for isolation: each specialist only sees its own tools, and independent consult_* calls in one turn run concurrently. On this project's eval set it didn't improve quality and cost ~1.7x the latency of the flat agent — worth it only if your domains are different enough to need separate reasoning.
 
 ## Data pipeline
 

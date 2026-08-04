@@ -97,6 +97,7 @@ async def load_books_tools() -> tuple[list, object | None]:
 
 
 async def load_sefaria_tools() -> tuple[list, object | None]:
+    # SSE is deprecated in MCP 2026-07-28, but it's the only transport Sefaria offers
     return await _load_mcp_tools(
         "sefaria-texts",
         {

@@ -88,6 +88,7 @@ TOOL_LABELS: dict[str, str] = {
 _graph = None
 _graph_multi = None
 _mcp_clients: list = []
+_books_tool_count = 0
 
 # In-memory session store: session_id -> AgentState
 _sessions: dict[str, dict] = {}
@@ -95,11 +96,14 @@ _sessions: dict[str, dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _graph, _graph_multi, _mcp_clients
+    global _graph, _graph_multi, _mcp_clients, _books_tool_count
     (books_tools, books_client), (youtube_tools, youtube_client), (sefaria_tools, sefaria_client) = (
         await asyncio.gather(load_books_tools(), load_youtube_tools(), load_sefaria_tools())
     )
     _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
+    _books_tool_count = len(books_tools)
+    if _books_tool_count == 0:
+        logger.error("No books MCP tools loaded — the books server is unreachable or failed to start")
     _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
     _graph_multi = await build_multi_graph(books_tools, sefaria_tools, youtube_tools)
     yield
@@ -267,4 +271,6 @@ async def ready() -> JSONResponse:
         await asyncio.to_thread(_check_db)
     except Exception as e:
         return JSONResponse(status_code=503, content={"status": "error", "db": str(e)})
-    return JSONResponse(status_code=200, content={"status": "ok", "db": "ok"})
+    if _books_tool_count == 0:
+        return JSONResponse(status_code=503, content={"status": "error", "db": "ok", "books_tools": 0})
+    return JSONResponse(status_code=200, content={"status": "ok", "db": "ok", "books_tools": _books_tool_count})

@@ -39,19 +39,22 @@ The frontend is served at `http://localhost:8000` by the FastAPI server (`GET /`
 
 ```bash
 # Install dependencies
-pip install -e ".[dev]"
+uv sync --extra dev
 
 # Run unit tests (no DB or network required)
-pytest
+uv run pytest
 
 # End-to-end agent evals — offline table (needs stack + GOOGLE_API_KEY)
-python -m evals.run_evals                # simple (flat ReAct) graph, default
-python -m evals.run_evals --mode multi   # multi-agent supervisor graph
-python -m evals.run_evals --mode both    # both, side by side
+uv run python -m evals.run_evals                # simple (flat ReAct) graph, default
+uv run python -m evals.run_evals --mode multi   # multi-agent supervisor graph
+uv run python -m evals.run_evals --mode both    # both, side by side
 
 # Same evals via LangSmith Datasets & Experiments (also needs LANGCHAIN_API_KEY)
-python -m evals.langsmith_eval
-python -m evals.langsmith_eval --mode multi
+uv run python -m evals.langsmith_eval
+uv run python -m evals.langsmith_eval --mode multi
+
+# After changing a dependency in pyproject.toml
+uv lock
 ```
 
 ## Architecture: data flow

@@ -38,14 +38,17 @@ LangGraph ReAct agent (agent/graph.py)
 tool calls
  ├──► Books MCP server (mcp_server/server.py, streamable HTTP :8001)
  │      Tools:    lookup_book         → PostgreSQL (exact/fuzzy match)
- │                get_recommendations → pgvector cosine sim + re-rank
- │                browse_collection   → PostgreSQL (filtered query)
- │                search_by_theme     → PostgreSQL (array search)
- │      Resource: books://all         → full collection dataset
+ │                get_recommendations → pgvector cosine sim + re-rank  *
+ │                browse_collection   → PostgreSQL (filtered query)    *
+ │                search_by_theme     → PostgreSQL (array search)      *
+ │      Resource: books://all                       → full collection dataset
+ │      Resource: ui://jewish-books/book-cards       → card grid for tools marked *
  │      Prompts:  reading_plan, explain_book_to_beginner
  ├──► Sefaria MCP server    → https://mcp.sefaria.org (SSE)
  └──► YouTube MCP server    → npx @kirbah/mcp-youtube (stdio)
 ```
+
+The `*`-marked tools render as an interactive card grid via the [MCP Apps extension](https://modelcontextprotocol.io/extensions/apps/overview).
 
 ### `multi` — supervisor with specialist agents
 
@@ -126,7 +129,7 @@ The evals run single- and multi-turn questions through the real agent graph, che
 
 ```
 agent/          LangGraph agent (graph.py, multi_graph.py supervisor, prompts, FastAPI server)
-mcp_server/     Standalone MCP server exposing four tools, a resource, and two prompts
+mcp_server/     Standalone MCP server exposing four tools, two resources, and two prompts
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
 recommender/    Two-stage recommendation engine
 db/             PostgreSQL schema

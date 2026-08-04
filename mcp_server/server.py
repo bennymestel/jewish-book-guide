@@ -14,6 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dotenv import load_dotenv
 load_dotenv()
 
+from pathlib import Path
+
 import psycopg
 import psycopg.rows
 from mcp.server.fastmcp import FastMCP
@@ -80,10 +82,10 @@ def lookup_book(title_query: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-@mcp.tool()
+@mcp.tool(meta={"ui": {"resourceUri": "ui://jewish-books/book-cards"}})
 def get_recommendations(
     seed_titles: list[str],
-    top_n: int = 3,
+    top_n: int = 4,
     difficulty: int | None = None,
     category: str | None = None,
 ) -> str:
@@ -138,7 +140,7 @@ def get_recommendations(
     return json.dumps(output, ensure_ascii=False)
 
 
-@mcp.tool()
+@mcp.tool(meta={"ui": {"resourceUri": "ui://jewish-books/book-cards"}})
 def browse_collection(
     category: str | None = None,
     difficulty_max: int | None = None,
@@ -203,7 +205,7 @@ def browse_collection(
     return json.dumps({"books": books}, ensure_ascii=False)
 
 
-@mcp.tool()
+@mcp.tool(meta={"ui": {"resourceUri": "ui://jewish-books/book-cards"}})
 def search_by_theme(theme: str, limit: int = 8) -> str:
     """Find books related to a specific theme or topic (e.g. 'prayer', 'teshuvah', 'Kabbalah', 'love of God').
     Returns books whose themes array contains the given theme."""
@@ -283,6 +285,13 @@ def all_books() -> str:
         })
 
     return json.dumps({"total": len(books), "books": books}, ensure_ascii=False)
+
+
+@mcp.resource("ui://jewish-books/book-cards", mime_type="text/html;profile=mcp-app")
+def book_cards_ui() -> str:
+    """Interactive card-grid HTML view shared by get_recommendations, browse_collection,
+    and search_by_theme (MCP Apps)."""
+    return (Path(__file__).parent / "ui" / "book-cards.html").read_text()
 
 
 # ── Prompts ────────────────────────────────────────────────────────────────────

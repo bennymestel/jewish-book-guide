@@ -27,7 +27,7 @@ logging.getLogger("langchain_google_genai._function_utils").setLevel(logging.ERR
 from langchain_core.messages import HumanMessage
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 import db
@@ -89,6 +89,9 @@ _graph = None
 _graph_multi = None
 _mcp_clients: list = []
 _books_tool_count = 0
+_books_client = None
+_ui_tools: dict[str, str] = {}  # tool name -> ui:// resource URI
+_ui_resource_cache: dict[str, str] = {}  # resource URI -> HTML
 
 # In-memory session store: session_id -> AgentState
 _sessions: dict[str, dict] = {}
@@ -96,14 +99,19 @@ _sessions: dict[str, dict] = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _graph, _graph_multi, _mcp_clients, _books_tool_count
+    global _graph, _graph_multi, _mcp_clients, _books_tool_count, _books_client, _ui_tools
     (books_tools, books_client), (youtube_tools, youtube_client), (sefaria_tools, sefaria_client) = (
         await asyncio.gather(load_books_tools(), load_youtube_tools(), load_sefaria_tools())
     )
     _mcp_clients = [c for c in [books_client, youtube_client, sefaria_client] if c is not None]
+    _books_client = books_client
     _books_tool_count = len(books_tools)
     if _books_tool_count == 0:
         logger.error("No books MCP tools loaded — the books server is unreachable or failed to start")
+    for t in books_tools:
+        uri = (t.metadata or {}).get("_meta", {}).get("ui", {}).get("resourceUri")
+        if uri:
+            _ui_tools[t.name] = uri
     _graph = await build_graph(tools=books_tools + youtube_tools + sefaria_tools)
     _graph_multi = await build_multi_graph(books_tools, sefaria_tools, youtube_tools)
     yield
@@ -114,6 +122,22 @@ app = FastAPI(title="Jewish Book Guide", version="1.0", lifespan=lifespan)
 @app.get("/")
 async def index():
     return FileResponse("frontend/index.html")
+
+
+@app.get("/ui/{path:path}")
+async def ui_resource(path: str) -> HTMLResponse:
+    """Serves an MCP Apps ui:// resource fetched from the books MCP server, by URI path."""
+    uri = f"ui://{path}"
+    if uri not in _ui_tools.values():
+        raise HTTPException(status_code=404, detail="Unknown UI resource")
+    if uri not in _ui_resource_cache:
+        if _books_client is None:
+            raise HTTPException(status_code=503, detail="Books MCP server unavailable")
+        blobs = await _books_client.get_resources("books", uris=[uri])
+        if not blobs:
+            raise HTTPException(status_code=404, detail="Resource not found")
+        _ui_resource_cache[uri] = blobs[0].as_string()
+    return HTMLResponse(content=_ui_resource_cache[uri])
 
 # The frontend is served same-origin (API_BASE="" in frontend/index.html), so no
 # browser CORS grant is needed for it to work, locally or deployed. ALLOWED_ORIGINS
@@ -196,6 +220,21 @@ async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> Streamin
                     tool_name = event.get("name", "")
                     label = TOOL_LABELS.get(tool_name, tool_name.replace("_", " ").capitalize())
                     yield f"event: tool\ndata: {json.dumps(label)}\n\n"
+                elif kind == "on_tool_end":
+                    tool_name = event.get("name", "")
+                    resource_uri = _ui_tools.get(tool_name)
+                    if resource_uri:
+                        try:
+                            output = event["data"].get("output")
+                            content = output.content if hasattr(output, "content") else output
+                            if isinstance(content, list):
+                                content = "".join(
+                                    block["text"] for block in content if isinstance(block, dict) and "text" in block
+                                )
+                            payload = json.loads(content)
+                            yield f"event: ui\ndata: {json.dumps({'resourceUri': resource_uri, 'toolName': tool_name, 'payload': payload})}\n\n"
+                        except Exception as e:
+                            logger.debug("[STREAM] skipping ui event for %s: %s", tool_name, e)
                 elif kind == "on_chat_model_end":
                     output = event["data"].get("output")
                     if output is not None:

@@ -9,8 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
+COPY --from=ghcr.io/astral-sh/uv:0.12.1 /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/usr/local
+
+# --locked: fail the build if uv.lock is stale, instead of resolving fresh
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-install-project
 
 # Bake the embedding model in so it's not fetched over the network at runtime
 COPY config.py .
@@ -21,6 +25,7 @@ ENV HF_HUB_OFFLINE=1
 RUN npm install -g @kirbah/mcp-youtube
 
 COPY . .
+RUN uv sync --locked
 RUN chmod +x deploy/cloudrun-start.sh
 
 EXPOSE 8000

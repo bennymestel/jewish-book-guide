@@ -114,9 +114,10 @@ This starts three services: PostgreSQL (with pgvector), the books MCP server on 
 ## Testing & evaluation
 
 ```bash
-pytest                          # unit tests (no DB or network)
-python -m evals.run_evals       # end-to-end agent evals, offline table (needs stack + GOOGLE_API_KEY)
-python -m evals.langsmith_eval  # same evals via LangSmith dashboard (also needs LANGCHAIN_API_KEY)
+uv sync --extra dev                    # install dependencies (requires uv)
+uv run pytest                          # unit tests (no DB or network)
+uv run python -m evals.run_evals       # end-to-end agent evals, offline table (needs stack + GOOGLE_API_KEY)
+uv run python -m evals.langsmith_eval  # same evals via LangSmith dashboard (also needs LANGCHAIN_API_KEY)
 ```
 
 The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality. Run locally for a quick offline table, or via LangSmith for a tracked experiment dashboard with per-case scores and run-over-run comparison. `--mode` selects which graph to evaluate: `simple` (default, the flat ReAct graph) or `multi` (the supervisor/agents-as-tools graph); `both` is only available for `run_evals`.

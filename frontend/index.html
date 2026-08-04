@@ -290,6 +290,21 @@
       box-shadow: 0 2px 10px rgba(122, 90, 42, 0.10);
     }
 
+    .app-frame {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 4px 18px 18px 18px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(122, 90, 42, 0.10);
+    }
+    .app-iframe {
+      display: block;
+      width: 100%;
+      height: 120px;
+      border: none;
+      background: var(--surface);
+    }
+
     /* Markdown inside bubbles */
     .bubble p { margin-bottom: 10px; }
     .bubble p:last-child { margin-bottom: 0; }
@@ -629,6 +644,72 @@
     return bubble;
   }
 
+  // MCP Apps bridge: renders a ui:// resource in a sandboxed iframe and speaks a small
+  // JSON-RPC-over-postMessage protocol with it (ui/initialize, ui/sizeChanged, ui/sendMessage).
+  function appendApp(resourceUri, toolName, payload) {
+    const w = document.getElementById("welcome");
+    if (w) w.remove();
+
+    const row = document.createElement("div");
+    row.className = "msg assistant";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.innerHTML = AVATAR_SVG;
+
+    const frame = document.createElement("div");
+    frame.className = "app-frame";
+
+    const iframe = document.createElement("iframe");
+    iframe.className = "app-iframe";
+    iframe.sandbox = "allow-scripts"; // deliberately no allow-same-origin: keeps the frame's origin opaque
+
+    frame.appendChild(iframe);
+    row.appendChild(avatar);
+    row.appendChild(frame);
+    messages.appendChild(row);
+    messages.scrollTop = messages.scrollHeight;
+
+    const path = resourceUri.replace(/^ui:\/\//, "");
+    return fetch(`${API_BASE}/ui/${path}`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.text();
+      })
+      .then((html) => {
+        iframe.srcdoc = html;
+        window.addEventListener("message", function onMessage(event) {
+          if (event.source !== iframe.contentWindow) return;
+          const msg = event.data;
+          if (!msg || typeof msg !== "object") return;
+
+          if (msg.method === "ui/initialize") {
+            iframe.contentWindow.postMessage(
+              { jsonrpc: "2.0", id: msg.id, result: { toolName, payload } },
+              "*"
+            );
+          } else if (msg.method === "ui/sizeChanged") {
+            const height = msg.params && msg.params.height;
+            if (typeof height === "number") {
+              iframe.style.height = `${Math.max(height, 40)}px`;
+            }
+          } else if (msg.method === "ui/sendMessage") {
+            const text = msg.params && msg.params.text;
+            if (text && !busy) {
+              input.value = text;
+              sendMessage();
+            }
+          }
+        });
+        return true;
+      })
+      .catch((err) => {
+        console.error("Failed to load app UI:", err);
+        row.remove();
+        return false;
+      });
+  }
+
   function showTyping() {
     const w = document.getElementById("welcome");
     if (w) w.remove();
@@ -690,6 +771,7 @@
       const decoder = new TextDecoder();
       let buffer = "";
       let reply = null;
+      let uiEvent = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -703,6 +785,8 @@
           const [, evtType, evtData] = eventMatch;
           if (evtType === "tool") {
             setTypingStatus(typingBubble, JSON.parse(evtData));
+          } else if (evtType === "ui") {
+            uiEvent = JSON.parse(evtData);
           } else if (evtType === "reply") {
             reply = JSON.parse(evtData);
           } else if (evtType === "error") {
@@ -712,7 +796,13 @@
       }
 
       removeTyping();
-      if (reply !== null) appendMessage("assistant", reply);
+      if (uiEvent) {
+        // A rendered card replaces the text reply; only fall back to text if the card failed to load.
+        const rendered = await appendApp(uiEvent.resourceUri, uiEvent.toolName, uiEvent.payload);
+        if (!rendered && reply !== null) appendMessage("assistant", reply);
+      } else if (reply !== null) {
+        appendMessage("assistant", reply);
+      }
     } catch (err) {
       removeTyping();
       appendMessage("assistant", `Sorry, something went wrong: ${err.message}\n\nMake sure the server is running at \`${API_BASE}\`.`);

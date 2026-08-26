@@ -72,6 +72,17 @@ def _is_quota_error(exc: Exception) -> bool:
     return any(s in text for s in ("resourceexhausted", "quota", "rate limit", "429", "exhausted"))
 
 
+def _text_from_content(content) -> str | None:
+    """Normalize a LangChain message/chunk `.content` (str, or list of content blocks) to text."""
+    if isinstance(content, list):
+        return "".join(
+            block["text"] for block in content if isinstance(block, dict) and "text" in block
+        )
+    if isinstance(content, str):
+        return content
+    return None
+
+
 TOOL_LABELS: dict[str, str] = {
     "get_recommendations": "Finding recommendations",
     "lookup_book": "Looking up book",
@@ -192,12 +203,7 @@ async def chat(req: ChatRequest, mode: str = Query("simple")) -> ChatResponse:
 
     last = result["messages"][-1]
     content = last.content if hasattr(last, "content") else str(last)
-    if isinstance(content, list):
-        reply = "".join(
-            block["text"] for block in content if isinstance(block, dict) and "text" in block
-        )
-    else:
-        reply = content
+    reply = _text_from_content(content)
 
     return ChatResponse(session_id=req.session_id, reply=reply)
 
@@ -212,41 +218,47 @@ async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> Streamin
     async def event_stream():
         final_state = None
         last_ai_text = None
+        # Tracks nesting inside a tool call (incl. a multi-mode specialist agent, which
+        # runs inside a consult_* tool body) so we only stream tokens for the top-level
+        # answer, not internal tool-calling turns.
+        tool_depth = 0
         try:
             async for event in graph.astream_events(state, version="v2"):
                 kind = event["event"]
                 logger.debug("[STREAM] event=%s name=%s", kind, event.get("name"))
                 if kind == "on_tool_start":
+                    tool_depth += 1
                     tool_name = event.get("name", "")
                     label = TOOL_LABELS.get(tool_name, tool_name.replace("_", " ").capitalize())
                     yield f"event: tool\ndata: {json.dumps(label)}\n\n"
                 elif kind == "on_tool_end":
+                    tool_depth = max(0, tool_depth - 1)
                     tool_name = event.get("name", "")
                     resource_uri = _ui_tools.get(tool_name)
                     if resource_uri:
                         try:
                             output = event["data"].get("output")
                             content = output.content if hasattr(output, "content") else output
-                            if isinstance(content, list):
-                                content = "".join(
-                                    block["text"] for block in content if isinstance(block, dict) and "text" in block
-                                )
+                            content = _text_from_content(content)
                             payload = json.loads(content)
                             yield f"event: ui\ndata: {json.dumps({'resourceUri': resource_uri, 'toolName': tool_name, 'payload': payload})}\n\n"
                         except Exception as e:
                             logger.debug("[STREAM] skipping ui event for %s: %s", tool_name, e)
+                elif kind == "on_chat_model_stream":
+                    chunk = event["data"].get("chunk")
+                    if (
+                        tool_depth == 0
+                        and chunk is not None
+                        and not getattr(chunk, "tool_call_chunks", None)
+                        and not getattr(chunk, "tool_calls", None)
+                    ):
+                        text = _text_from_content(getattr(chunk, "content", None))
+                        if text:
+                            yield f"event: token\ndata: {json.dumps(text)}\n\n"
                 elif kind == "on_chat_model_end":
                     output = event["data"].get("output")
                     if output is not None:
-                        content = output.content if hasattr(output, "content") else None
-                        if isinstance(content, list):
-                            text = "".join(
-                                block["text"] for block in content if isinstance(block, dict) and "text" in block
-                            )
-                        elif isinstance(content, str):
-                            text = content
-                        else:
-                            text = None
+                        text = _text_from_content(getattr(output, "content", None))
                         if text:
                             last_ai_text = text
                             logger.debug("[STREAM] on_chat_model_end captured text len=%d", len(text))
@@ -268,12 +280,7 @@ async def chat_stream(req: ChatRequest, mode: str = Query("simple")) -> Streamin
         # Extract reply: prefer the final state messages, fall back to last captured AI text
         last = final_state["messages"][-1]
         content = last.content if hasattr(last, "content") else str(last)
-        if isinstance(content, list):
-            reply = "".join(
-                block["text"] for block in content if isinstance(block, dict) and "text" in block
-            )
-        else:
-            reply = content
+        reply = _text_from_content(content)
 
         if not reply and last_ai_text:
             logger.debug("[STREAM] falling back to last_ai_text")

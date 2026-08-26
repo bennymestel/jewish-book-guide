@@ -754,6 +754,7 @@
 
     appendMessage("user", text);
     const typingBubble = showTyping();
+    let answerBubble = null;
 
     try {
       const res = await fetch(`${API_BASE}/chat/stream?mode=${mode}`, {
@@ -773,6 +774,17 @@
       let reply = null;
       let uiEvent = null;
 
+      // Tokens stream into answerBubble live, throttled to ~60ms between re-renders
+      // so markdown parsing doesn't run on every single token.
+      let streamed = "";
+      let lastRender = 0;
+      let renderTimer = null;
+      const renderStreamed = () => {
+        lastRender = performance.now();
+        answerBubble.innerHTML = marked.parse(streamed);
+        messages.scrollTop = messages.scrollHeight;
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -785,6 +797,19 @@
           const [, evtType, evtData] = eventMatch;
           if (evtType === "tool") {
             setTypingStatus(typingBubble, JSON.parse(evtData));
+          } else if (evtType === "token") {
+            if (uiEvent) continue; // a card is replacing the text reply; ignore further tokens
+            if (!answerBubble) {
+              removeTyping();
+              answerBubble = appendMessage("assistant", "");
+            }
+            streamed += JSON.parse(evtData);
+            if (performance.now() - lastRender >= 60) {
+              if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
+              renderStreamed();
+            } else if (!renderTimer) {
+              renderTimer = setTimeout(() => { renderTimer = null; renderStreamed(); }, 60);
+            }
           } else if (evtType === "ui") {
             uiEvent = JSON.parse(evtData);
           } else if (evtType === "reply") {
@@ -794,17 +819,24 @@
           }
         }
       }
+      if (renderTimer) { clearTimeout(renderTimer); renderTimer = null; }
 
       removeTyping();
       if (uiEvent) {
         // A rendered card replaces the text reply; only fall back to text if the card failed to load.
+        if (answerBubble) answerBubble.closest(".msg").remove();
         const rendered = await appendApp(uiEvent.resourceUri, uiEvent.toolName, uiEvent.payload);
         if (!rendered && reply !== null) appendMessage("assistant", reply);
+      } else if (answerBubble) {
+        // Settle on the server's authoritative reply text in case any chunk was dropped.
+        streamed = reply !== null ? reply : streamed;
+        renderStreamed();
       } else if (reply !== null) {
         appendMessage("assistant", reply);
       }
     } catch (err) {
       removeTyping();
+      if (answerBubble) answerBubble.closest(".msg").remove();
       appendMessage("assistant", `Sorry, something went wrong: ${err.message}\n\nMake sure the server is running at \`${API_BASE}\`.`);
     } finally {
       busy = false;

@@ -182,6 +182,22 @@ async def test_chat_stream_mode_multi(client_multi, mock_multi_graph):
     assert b"reply" in r.content
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_only_tokens_outside_tool_calls(client_multi, mock_multi_graph):
+    """Chat-model stream chunks emitted while inside a tool call (e.g. a specialist
+    agent's internal turn) must not become `token` events; only the top-level
+    answer's chunks should."""
+    mock_multi_graph.astream_events = MagicMock(return_value=_fake_stream_with_tokens())
+    r = await client_multi.post(
+        "/chat/stream?mode=multi", json={"session_id": "m5", "message": "hi"}
+    )
+    assert r.status_code == 200
+    assert r.content.count(b"event: token") == 1
+    assert b'data: "visible answer"' in r.content
+    assert b"internal reasoning" not in r.content
+    assert r.content.rstrip().endswith(b'event: reply\ndata: "final reply"')
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 async def _fake_stream():
@@ -191,4 +207,28 @@ async def _fake_stream():
         "event": "on_chain_end",
         "name": "LangGraph",
         "data": {"output": {"messages": [AI(content="streamed multi reply")]}},
+    }
+
+
+async def _fake_stream_with_tokens():
+    """astream_events output with a token chunk inside a tool call (should be
+    suppressed) and one outside it (should be forwarded as a `token` event)."""
+    from langchain_core.messages import AIMessage as AI, AIMessageChunk
+
+    yield {"event": "on_tool_start", "name": "consult_books", "data": {}}
+    yield {
+        "event": "on_chat_model_stream",
+        "name": "agent",
+        "data": {"chunk": AIMessageChunk(content="internal reasoning")},
+    }
+    yield {"event": "on_tool_end", "name": "consult_books", "data": {"output": ""}}
+    yield {
+        "event": "on_chat_model_stream",
+        "name": "agent",
+        "data": {"chunk": AIMessageChunk(content="visible answer")},
+    }
+    yield {
+        "event": "on_chain_end",
+        "name": "LangGraph",
+        "data": {"output": {"messages": [AI(content="final reply")]}},
     }

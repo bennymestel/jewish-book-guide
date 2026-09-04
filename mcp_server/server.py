@@ -39,9 +39,15 @@ def _find_book(title_query: str):
     return find_book(title_query)
 
 
-def _recommend(seed_titles, top_n=3, difficulty_pref=None, category_pref=None):
+def _recommend(seed_titles, top_n=3, difficulty_pref=None, category_pref=None, user_query=None):
     from recommender.query import recommend
-    return recommend(seed_titles, top_n=top_n, difficulty_pref=difficulty_pref, category_pref=category_pref)
+    return recommend(
+        seed_titles,
+        top_n=top_n,
+        difficulty_pref=difficulty_pref,
+        category_pref=category_pref,
+        user_query=user_query,
+    )
 
 
 def _escape_like(value: str) -> str:
@@ -88,13 +94,21 @@ def get_recommendations(
     top_n: int = 4,
     difficulty: int | None = None,
     category: str | None = None,
+    user_query: str | None = None,
 ) -> str:
     """Get book recommendations similar to one or more seed books.
     seed_titles: list of book titles or Sefaria keys (verify they exist with lookup_book first).
     difficulty: target difficulty 1-5 (optional).
     category: filter to 'Chasidut', 'Musar', or 'Jewish Thought' (optional).
+    user_query: pass the user's own words describing what they're looking for, as close
+    to verbatim as possible — this lets the ranking respond to what they actually asked
+    for, not just the seed books. E.g. if they say "something about prayer, but easier
+    than Tanya", pass user_query="something about prayer, but easier than Tanya".
     Returns a ranked list of recommended books."""
-    logger.info("[TOOL] get_recommendations: seeds=%r top_n=%d difficulty=%r category=%r", seed_titles, top_n, difficulty, category)
+    logger.info(
+        "[TOOL] get_recommendations: seeds=%r top_n=%d difficulty=%r category=%r user_query=%r",
+        seed_titles, top_n, difficulty, category, user_query,
+    )
     validated: list[str] = []
     not_found: list[str] = []
     for title in seed_titles:
@@ -114,6 +128,7 @@ def get_recommendations(
         top_n=top_n,
         difficulty_pref=difficulty,
         category_pref=category,
+        user_query=user_query,
     )
 
     if not results:
@@ -335,8 +350,8 @@ Keep the total response under 200 words."""
 if __name__ == "__main__":
     from recommender.query import warm_model
 
-    logger.info("Warming embedding model...")
+    logger.info("Warming embedding and cross-encoder models...")
     warm_model()
-    logger.info("Embedding model ready.")
+    logger.info("Embedding and cross-encoder models ready.")
 
     mcp.run(transport="streamable-http")

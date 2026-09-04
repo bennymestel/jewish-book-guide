@@ -124,3 +124,36 @@ def test_score_theme_overlap_adds_bonus():
     two_overlap = _score(_candidate(themes=["soul", "prayer"]), _seed(themes=["soul", "prayer"]), difficulty_pref=None)
     no_overlap = _score(_candidate(themes=["soul", "prayer"]), _seed(themes=["humility"]), difficulty_pref=None)
     assert round(two_overlap - no_overlap, 6) == round(2 * config.WEIGHT_PER_THEME, 6)
+
+
+# ── _score: cross-encoder term ─────────────────────────────────────────────────
+
+def test_score_cross_score_none_matches_no_cross_encoder():
+    """Omitting cross_score (the default) must score identically to passing None
+    explicitly — this is what makes an absent user_query a no-op."""
+    with_default = _score(_candidate(), _seed(), difficulty_pref=None)
+    with_none = _score(_candidate(), _seed(), difficulty_pref=None, cross_score=None)
+    assert with_default == with_none
+
+
+def test_score_higher_cross_score_wins_at_equal_cosine():
+    low = _score(_candidate(), _seed(), difficulty_pref=None, cross_score=-5.0)
+    high = _score(_candidate(), _seed(), difficulty_pref=None, cross_score=5.0)
+    assert high > low
+
+
+def test_score_cross_score_adds_sigmoid_weighted_term():
+    import config
+    from recommender.query import _sigmoid
+    base = _score(_candidate(), _seed(), difficulty_pref=None)
+    with_cross = _score(_candidate(), _seed(), difficulty_pref=None, cross_score=2.0)
+    expected = config.WEIGHT_CROSS_ENCODER * _sigmoid(2.0)
+    assert round(with_cross - base, 6) == round(expected, 6)
+
+
+def test_score_equal_cross_scores_preserve_cosine_order():
+    """A flat cross_score across candidates (e.g. all near sigmoid's saturated
+    tail, as with a vague query) must not flip the order cosine alone gives."""
+    weaker = _score(_candidate(cosine_sim=0.70), _seed(), difficulty_pref=None, cross_score=-9.0)
+    stronger = _score(_candidate(cosine_sim=0.80), _seed(), difficulty_pref=None, cross_score=-9.0)
+    assert stronger > weaker

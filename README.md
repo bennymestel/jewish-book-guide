@@ -83,8 +83,8 @@ Sefaria API ──► ingestion/fetch_sefaria.py ──► books table (PostgreS
 ```
 
 `recommender/query.py` then serves recommendations in two stages:
-1. **Vector search** — pgvector cosine similarity retrieves the top 20 candidates
-2. **Re-rank** — weighted bonuses/penalties (`config.py`, `WEIGHT_*`) for category match, subcategory match, theme overlap, and difficulty proximity
+1. **Vector search** — a **bi-encoder** (`all-MiniLM-L6-v2`) embeds each book once at ingestion time; pgvector cosine similarity retrieves the top 20 candidates via a fast vector-distance lookup, no transformer inference at request time.
+2. **Re-rank** — bonuses/penalties (`config.py`, `WEIGHT_*`) against the seed book (category, subcategory, theme overlap, difficulty), plus a **cross-encoder** (`mxbai-rerank-xsmall-v1`) that jointly scores each candidate against the user's own words, when available. Unlike the bi-encoder, a cross-encoder can't precompute anything — it needs query and candidate together, so it runs at request time.
 
 ## Setup
 
@@ -149,7 +149,8 @@ tests/          Unit test suite
 | Agent framework | LangGraph |
 | LLM | Google Gemini (via LangChain) |
 | Vector DB | PostgreSQL + pgvector |
-| Embeddings | sentence-transformers (all-MiniLM-L6-v2) |
+| Embeddings (bi-encoder) | sentence-transformers (all-MiniLM-L6-v2) |
+| Re-ranking (cross-encoder) | sentence-transformers (mxbai-rerank-xsmall-v1) |
 | Web framework | FastAPI |
 | MCP (consumed) | Sefaria (SSE), YouTube (stdio) |
 | MCP (built) | Books tool server (streamable HTTP) |

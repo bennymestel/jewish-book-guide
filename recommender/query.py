@@ -1,22 +1,27 @@
 """
 Two-stage book recommendation:
   Stage 1 — vector cosine similarity via pgvector
-  Stage 2 — re-rank with category / difficulty / theme bonuses
+  Stage 2 — re-rank with category / difficulty / theme bonuses, plus a
+            cross-encoder relevance term when the user's own query is available
 
 Public API:
-    recommend(seed_titles, top_n, difficulty_pref, category_pref) -> list[dict]
+    recommend(seed_titles, top_n, difficulty_pref, category_pref, user_query) -> list[dict]
     find_book(title_query) -> dict | None
 """
 from __future__ import annotations
 
+import math
+
 import psycopg
 import psycopg.rows
+import torch
 
 import config
 import db
 from ingestion.embed import build_profile
 
 _model = None
+_cross_encoder = None
 
 
 def _get_model():
@@ -27,15 +32,34 @@ def _get_model():
     return _model
 
 
+def _get_cross_encoder():
+    global _cross_encoder
+    if _cross_encoder is None:
+        from sentence_transformers import CrossEncoder
+        _cross_encoder = CrossEncoder(config.CROSS_ENCODER_MODEL)
+    return _cross_encoder
+
+
 def warm_model() -> None:
-    """Load the embedding model now. Importing torch/sentence-transformers and
-    constructing the model takes ~15-20s on first use; calling this at server
-    startup keeps that cost off the event loop during a real tool call, where
-    it can block long enough to drop an in-flight streamable-HTTP session."""
+    """Load the embedding and cross-encoder models now. Importing torch/
+    sentence-transformers and constructing each model takes ~15-20s on first
+    use; calling this at server startup keeps that cost off the event loop
+    during a real tool call, where it can block long enough to drop an
+    in-flight streamable-HTTP session."""
     _get_model()
+    _get_cross_encoder()
 
 
-def _score(candidate: dict, seed: dict, difficulty_pref: int | None) -> float:
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _score(
+    candidate: dict,
+    seed: dict,
+    difficulty_pref: int | None,
+    cross_score: float | None = None,
+) -> float:
     score: float = candidate["cosine_sim"]
 
     if candidate["category"] == seed["category"]:
@@ -53,6 +77,13 @@ def _score(candidate: dict, seed: dict, difficulty_pref: int | None) -> float:
     s_themes = set(seed.get("themes") or [])
     overlap = len(c_themes & s_themes)
     score += overlap * config.WEIGHT_PER_THEME
+
+    # Cross-encoder relevance to the user's own query (query-aware, unlike
+    # everything above which only compares the candidate to the seed book).
+    # None means "no usable query" — contributes nothing, so behaviour is
+    # unchanged from before this term existed.
+    if cross_score is not None:
+        score += config.WEIGHT_CROSS_ENCODER * _sigmoid(cross_score)
 
     return score
 
@@ -131,12 +162,16 @@ def recommend(
     top_n: int = 3,
     difficulty_pref: int | None = None,
     category_pref: str | None = None,
+    user_query: str | None = None,
 ) -> list[dict]:
     """
     Returns up to top_n recommended books similar to the seed_titles.
     seed_titles: list of title_en or sefaria_key values
     difficulty_pref: 1–5 target difficulty level (optional)
     category_pref: filter candidates to this category (optional)
+    user_query: the user's own words describing what they want (optional).
+        Absent -> cross-encoder step is skipped and ranking is identical to
+        the seed-only behaviour.
     """
     model = _get_model()
 
@@ -181,9 +216,17 @@ def recommend(
 
         # Stage 2: re-rank using the first (or primary) seed as reference
         primary_seed = seeds[0]
+
+        if user_query:
+            encoder = _get_cross_encoder()
+            pairs = [(user_query, build_profile(c)) for c in candidates]
+            cross_scores = list(encoder.predict(pairs, activation_fn=torch.nn.Identity()))
+        else:
+            cross_scores = [None] * len(candidates)
+
         scored = [
-            {**c, "score": _score(c, primary_seed, difficulty_pref)}
-            for c in candidates
+            {**c, "score": _score(c, primary_seed, difficulty_pref, cross_score)}
+            for c, cross_score in zip(candidates, cross_scores)
         ]
         scored.sort(key=lambda x: x["score"], reverse=True)
 

@@ -15,11 +15,15 @@ JUDGE_MODEL = os.getenv("JUDGE_MODEL", GEMINI_MODEL)
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
 
+# ── Cross-encoder (query-aware re-ranking) ───────────────────────────────────
+CROSS_ENCODER_MODEL = "mixedbread-ai/mxbai-rerank-xsmall-v1"
+
 # ── Re-ranking weights ────────────────────────────────────────────────────────
 WEIGHT_SAME_CATEGORY    = 0.15
 WEIGHT_SAME_SUBCATEGORY = 0.10
 WEIGHT_PER_DIFFICULTY   = 0.10   # penalty per difficulty level of mismatch
 WEIGHT_PER_THEME        = 0.05   # bonus per overlapping theme
+WEIGHT_CROSS_ENCODER    = 0.50   # bonus for cross-encoder relevance to the user's own query
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent

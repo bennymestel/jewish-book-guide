@@ -163,16 +163,27 @@ CASES: list[dict] = [
         #         to understand "easier than what" and adjusts the difficulty filter.
         "inputs": [
             "I loved Tanya. What should I read next?",
-            "That sounds interesting but I want something a bit easier for a beginner.",
+            "That sounds interesting but I want something about prayer, closer to a beginner level.",
         ],
         "required_tools": {"get_recommendations", "browse_collection"},
         "max_difficulty": 2,
         "expect_grounded": True,
         "min_titles": 1,
+        # Asserts the agent passed the user's own topical words through, not just the seed —
+        # this is what lets get_recommendations' cross-encoder re-ranking actually engage,
+        # rather than falling back to plain cosine + difficulty penalty.
+        "tool_arg_check": lambda calls: (
+            any(
+                c["name"] == "get_recommendations"
+                and "prayer" in (c["args"].get("user_query") or "").lower()
+                for c in calls
+            ),
+            "get_recommendations was not called with the user's topical query ('prayer')",
+        ),
         "judge": (
             "The assistant's final reply should recommend books appropriate for a beginner "
-            "(difficulty 1 or 2), and the recommendations should be responsive to the user's "
-            "stated preference for something easier than Tanya."
+            "(difficulty 1 or 2) about prayer, and the recommendations should be responsive "
+            "to the user's stated preference for something easier than Tanya."
         ),
     },
 ]

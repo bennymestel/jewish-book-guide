@@ -16,9 +16,11 @@ ENV UV_PROJECT_ENVIRONMENT=/usr/local
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-install-project
 
-# Bake the embedding model in so it's not fetched over the network at runtime
+# Bake the embedding and cross-encoder models in so they're not fetched over
+# the network at runtime
 COPY config.py .
 RUN python -c "from sentence_transformers import SentenceTransformer; import config; SentenceTransformer(config.EMBEDDING_MODEL)"
+RUN python -c "from sentence_transformers import CrossEncoder; import config; CrossEncoder(config.CROSS_ENCODER_MODEL)"
 ENV HF_HUB_OFFLINE=1
 
 # Vendor the YouTube MCP server so npx doesn't re-resolve it at every cold start

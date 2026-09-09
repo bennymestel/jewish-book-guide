@@ -38,7 +38,7 @@ LangGraph ReAct agent (agent/graph.py)
 tool calls
  ├──► Books MCP server (mcp_server/server.py, streamable HTTP :8001)
  │      Tools:    lookup_book         → PostgreSQL (title match + spelling-variant fallback)
- │                get_recommendations → pgvector cosine sim + re-rank  *
+ │                get_recommendations → dense + lexical candidates, re-ranked  *
  │                browse_collection   → PostgreSQL (filtered query)    *
  │                search_by_theme     → hybrid search (dense + lexical), re-ranked  *
  │      Resource: books://all                       → full collection dataset

@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ingestion.embed import build_profile
 from recommender.query import _score
+from recommender.hybrid import rrf_fuse
 from mcp_server.server import _escape_like
 
 
@@ -157,3 +158,45 @@ def test_score_equal_cross_scores_preserve_cosine_order():
     weaker = _score(_candidate(cosine_sim=0.70), _seed(), difficulty_pref=None, cross_score=-9.0)
     stronger = _score(_candidate(cosine_sim=0.80), _seed(), difficulty_pref=None, cross_score=-9.0)
     assert stronger > weaker
+
+
+# ── rrf_fuse ──────────────────────────────────────────────────────────────────
+
+def test_rrf_fuse_single_list_keeps_order():
+    fused = rrf_fuse([[1, 2, 3]])
+    assert [item_id for item_id, _ in fused] == [1, 2, 3]
+
+
+def test_rrf_fuse_rank2_in_both_beats_rank1_in_one():
+    """The whole point of RRF: appearing at rank 2 in every arm should beat
+    being first in only one arm."""
+    fused = rrf_fuse([[3, 2], [4, 2]])
+    ranking = [item_id for item_id, _ in fused]
+    assert ranking[0] == 2
+
+
+def test_rrf_fuse_output_is_union_no_duplicates():
+    fused = rrf_fuse([[1, 2, 3], [3, 4]])
+    ids = [item_id for item_id, _ in fused]
+    assert set(ids) == {1, 2, 3, 4}
+    assert len(ids) == len(set(ids))
+
+
+def test_rrf_fuse_empty_lists_tolerated():
+    assert rrf_fuse([]) == []
+    assert rrf_fuse([[], []]) == []
+    fused = rrf_fuse([[1, 2], []])
+    assert [item_id for item_id, _ in fused] == [1, 2]
+
+
+def test_rrf_fuse_ties_break_by_id():
+    """Equal scores (e.g. two disjoint singleton lists) must sort deterministically."""
+    fused = rrf_fuse([[5], [2]])
+    assert [item_id for item_id, _ in fused] == [2, 5]
+
+
+def test_rrf_fuse_uses_config_k():
+    import config
+    fused_default = rrf_fuse([[1]])
+    fused_explicit_k = rrf_fuse([[1]], k=config.RRF_K)
+    assert fused_default == fused_explicit_k

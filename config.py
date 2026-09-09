@@ -25,6 +25,12 @@ WEIGHT_PER_DIFFICULTY   = 0.10   # penalty per difficulty level of mismatch
 WEIGHT_PER_THEME        = 0.05   # bonus per overlapping theme
 WEIGHT_CROSS_ENCODER    = 0.50   # bonus for cross-encoder relevance to the user's own query
 
+# ── Hybrid search ─────────────────────────────────────────────────────────────
+RRF_K = 10                      # tuned for our corpus size, not the usual default of 60
+TRIGRAM_MIN_SIMILARITY = 0.30   # pg_trgm default
+HYBRID_MIN_COSINE = 0.21        # floor so unrelated queries return no matches
+HYBRID_ARM_TOP_K = 20           # candidates per arm before fusion
+
 # ── Paths ─────────────────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).parent
 ENRICHMENT_FILE = PROJECT_ROOT / "config"

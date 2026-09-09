@@ -88,8 +88,15 @@ def _score(
     return score
 
 
-def _query_vector(conn: psycopg.Connection, vector: list[float], exclude_ids: list[int], top_k: int = 20) -> list[dict]:
-    placeholders = ", ".join(["%s"] * len(exclude_ids)) if exclude_ids else "NULL"
+def _query_vector(
+    conn: psycopg.Connection,
+    vector: list[float],
+    exclude_ids: list[int],
+    top_k: int = 20,
+    min_cosine: float | None = None,
+) -> list[dict]:
+    exclude_clause = f"AND id NOT IN ({', '.join(['%s'] * len(exclude_ids))})" if exclude_ids else ""
+    floor_clause = "AND 1 - (embedding <=> %s::vector) >= %s" if min_cosine is not None else ""
     sql = f"""
         SELECT
             id, sefaria_key, title_en,
@@ -99,13 +106,16 @@ def _query_vector(conn: psycopg.Connection, vector: list[float], exclude_ids: li
             1 - (embedding <=> %s::vector) AS cosine_sim
         FROM books
         WHERE embedding IS NOT NULL
-          AND id NOT IN ({placeholders if exclude_ids else 'SELECT NULL'})
+          {exclude_clause}
+          {floor_clause}
         ORDER BY embedding <=> %s::vector
         LIMIT %s
     """
     params: list = [vector]
     if exclude_ids:
         params.extend(exclude_ids)
+    if min_cosine is not None:
+        params.extend([vector, min_cosine])
     params.extend([vector, top_k])
 
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -136,15 +146,20 @@ def _get_books_by_titles(conn: psycopg.Connection, titles: list[str]) -> list[di
     return results
 
 
+_FIND_BOOK_COLUMNS = """
+    id, sefaria_key, title_en, author_en,
+    category, subcategory, difficulty, themes,
+    is_foundational, desc_en_short, desc_en,
+    pub_date
+"""
+
+
 def find_book(title_query: str) -> dict | None:
     with db.connect(row_factory=psycopg.rows.dict_row) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
-                SELECT id, sefaria_key, title_en, author_en,
-                       category, subcategory, difficulty, themes,
-                       is_foundational, desc_en_short, desc_en,
-                       pub_date
+                f"""
+                SELECT {_FIND_BOOK_COLUMNS}
                 FROM books
                 WHERE lower(title_en) ILIKE %s
                    OR lower(sefaria_key) ILIKE %s
@@ -153,6 +168,22 @@ def find_book(title_query: str) -> dict | None:
                 LIMIT 1
                 """,
                 (f"%{title_query.lower()}%", f"%{title_query.lower()}%", title_query),
+            )
+            row = cur.fetchone()
+            if row is not None:
+                return row
+
+            # ILIKE found nothing — fall back to trigram similarity, which
+            # bridges spelling/transliteration variants ILIKE can't.
+            from recommender.hybrid import lexical_search
+
+            matches = lexical_search(conn, title_query, top_k=1)
+            if not matches or matches[0]["lex_sim"] < config.TRIGRAM_MIN_SIMILARITY:
+                return None
+
+            cur.execute(
+                f"SELECT {_FIND_BOOK_COLUMNS} FROM books WHERE id = %s",
+                (matches[0]["id"],),
             )
             return cur.fetchone()
 
@@ -205,8 +236,20 @@ def recommend(
                 for i in range(config.EMBEDDING_DIM)
             ]
 
-        # Stage 1: vector retrieval
+        # Stage 1: vector retrieval, widened with a lexical arm when the user's
+        # own words are available — this only affects which candidates make it
+        # into the pool, not how they're ranked (still _score, below).
         candidates = _query_vector(conn, query_vector, seed_ids, top_k=20)
+        if user_query:
+            from recommender.hybrid import lexical_search, merge_rows
+
+            lexical_rows = lexical_search(conn, user_query, exclude_ids=seed_ids)
+            candidates = list(merge_rows(candidates, lexical_rows).values())[:30]
+            # Lexical-only rows have no cosine_sim (they weren't in the dense
+            # top-20) — _score reads it directly, so default it to 0 rather
+            # than crash or fake a similarity we didn't measure.
+            for c in candidates:
+                c.setdefault("cosine_sim", 0.0)
 
         if category_pref:
             candidates = [c for c in candidates if c.get("category") == category_pref]

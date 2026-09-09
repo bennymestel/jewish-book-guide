@@ -74,10 +74,10 @@ The embedding for each book is built by `ingestion/embed.py:build_profile`, whic
 
 ## Key MCP tools exposed by the books server
 
-- `lookup_book` — fuzzy title/key match, returns full metadata
-- `get_recommendations` — two-stage vector + re-rank pipeline
+- `lookup_book` — ILIKE title/key match, falls back to pg_trgm trigram similarity for spelling/transliteration variants
+- `get_recommendations` — two-stage vector + re-rank pipeline; candidate pool is widened with a trigram lexical arm when `user_query` is given
 - `browse_collection` — filtered SQL query (category, difficulty, foundational flag)
-- `search_by_theme` — `unnest(themes) ILIKE` search
+- `search_by_theme` — hybrid search: pgvector cosine + pg_trgm trigram, fused with RRF (`recommender/hybrid.py`), then cross-encoder re-ranked
 - Resource `books://all` — full collection dump as JSON
 - Prompts: `reading_plan`, `explain_book_to_beginner`
 

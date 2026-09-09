@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/46d31470-8a1a-4529-acd8-6373963e8a1c
 
 ## What it does
 
-- Recommends similar books and looks up, browses, or searches the curated ~50-book collection — RAG-based vector search, filterable by category, difficulty, or theme
+- Recommends similar books and looks up, browses, or searches the curated ~50-book collection — hybrid (dense + lexical) search with cross-encoder re-ranking, filterable by category, difficulty, or theme
 - Searches the broader [Sefaria](https://www.sefaria.org) library for books and passages beyond the curated collection, and fetches text references
 - Finds relevant YouTube shiurim/lectures on a book or topic
 - Holds a multi-turn conversation via chat, remembering context within a session
@@ -37,10 +37,10 @@ LangGraph ReAct agent (agent/graph.py)
  ▼
 tool calls
  ├──► Books MCP server (mcp_server/server.py, streamable HTTP :8001)
- │      Tools:    lookup_book         → PostgreSQL (exact/fuzzy match)
+ │      Tools:    lookup_book         → PostgreSQL (title match + spelling-variant fallback)
  │                get_recommendations → pgvector cosine sim + re-rank  *
  │                browse_collection   → PostgreSQL (filtered query)    *
- │                search_by_theme     → PostgreSQL (array search)      *
+ │                search_by_theme     → hybrid search (dense + lexical), re-ranked  *
  │      Resource: books://all                       → full collection dataset
  │      Resource: ui://jewish-books/book-cards       → card grid for tools marked *
  │      Prompts:  reading_plan, explain_book_to_beginner
@@ -69,7 +69,7 @@ Agents-as-tools trades latency for isolation: each specialist only sees its own 
 
 ## Data pipeline
 
-The books MCP server's `get_recommendations` tool is powered by a RAG pipeline built ahead of time, independent of the agent:
+The books MCP server's `get_recommendations` and `search_by_theme` tools are powered by a RAG pipeline built ahead of time, independent of the agent:
 
 ```
 Sefaria API ──► ingestion/fetch_sefaria.py ──► books table (PostgreSQL)
@@ -82,9 +82,11 @@ Sefaria API ──► ingestion/fetch_sefaria.py ──► books table (PostgreS
                                           books.embedding (pgvector, 384-dim)
 ```
 
-`recommender/query.py` then serves recommendations in two stages:
-1. **Vector search** — a **bi-encoder** (`all-MiniLM-L6-v2`) embeds each book once at ingestion time; pgvector cosine similarity retrieves the top 20 candidates via a fast vector-distance lookup, no transformer inference at request time.
-2. **Re-rank** — bonuses/penalties (`config.py`, `WEIGHT_*`) against the seed book (category, subcategory, theme overlap, difficulty), plus a **cross-encoder** (`mxbai-rerank-xsmall-v1`) that jointly scores each candidate against the user's own words, when available. Unlike the bi-encoder, a cross-encoder can't precompute anything — it needs query and candidate together, so it runs at request time.
+`recommender/query.py` serves `get_recommendations` in two stages:
+1. **Candidate retrieval (hybrid)** — a **bi-encoder** (`all-MiniLM-L6-v2`) embeds each book once at ingestion time; pgvector cosine similarity retrieves the top 20 candidates. When the user's own words are available, a **pg_trgm** trigram lexical arm runs alongside it, widening the pool with matches cosine similarity alone can miss.
+2. **Multi-signal re-rank** — a weighted score (`config.py`, `WEIGHT_*`) blending cosine similarity, category/subcategory/theme/difficulty fit against the seed book, and a **cross-encoder** (`mxbai-rerank-xsmall-v1`) relevance score against the user's own words, when available.
+
+`search_by_theme` (`recommender/hybrid.py`) runs a separate, complete hybrid search pipeline for topic queries: the bi-encoder and pg_trgm arms run in parallel, get fused with **Reciprocal Rank Fusion**, and the merged list is re-ranked by the same cross-encoder — dense + lexical retrieval, fused, then re-ranked, end to end.
 
 ## Setup
 
@@ -131,11 +133,11 @@ The evals run single- and multi-turn questions through the real agent graph, che
 agent/          LangGraph agent (graph.py, multi_graph.py supervisor, prompts, FastAPI server)
 mcp_server/     Standalone MCP server exposing four tools, two resources, and two prompts
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
-recommender/    Two-stage recommendation engine
+recommender/    Two-stage recommendation engine + hybrid search pipeline
 db/             PostgreSQL schema
 frontend/       Single-page chat UI (Tailwind CSS)
 config.py       Central config (DB URL, model, re-ranking weights)
-db.py           Shared DB connection helper (bounded connect/statement timeouts)
+db.py           Shared DB connection helper (bounded timeouts, pg_trgm setup)
 cli.py          Typer CLI entry point
 deploy/         Cloud Run deployment script
 evals/          End-to-end eval harness (tool trajectory, grounding, difficulty checks)
@@ -148,7 +150,7 @@ tests/          Unit test suite
 |-------|-----------|
 | Agent framework | LangGraph |
 | LLM | Google Gemini (via LangChain) |
-| Vector DB | PostgreSQL + pgvector |
+| Vector + lexical search | PostgreSQL + pgvector + pg_trgm |
 | Embeddings (bi-encoder) | sentence-transformers (all-MiniLM-L6-v2) |
 | Re-ranking (cross-encoder) | sentence-transformers (mxbai-rerank-xsmall-v1) |
 | Web framework | FastAPI |

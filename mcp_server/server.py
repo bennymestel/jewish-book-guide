@@ -222,25 +222,17 @@ def browse_collection(
 
 @mcp.tool(meta={"ui": {"resourceUri": "ui://jewish-books/book-cards"}})
 def search_by_theme(theme: str, limit: int = 8) -> str:
-    """Find books related to a specific theme or topic (e.g. 'prayer', 'teshuvah', 'Kabbalah', 'love of God').
-    Returns books whose themes array contains the given theme."""
+    """Find books related to a theme or topic — e.g. 'prayer', 'teshuvah', 'Kabbalah',
+    'love of God', or any other word or short phrase describing what the user wants to
+    read about. Not limited to exact theme tags: matches by meaning (semantic search)
+    and by spelling (handles transliteration variants like 'chesed'/'kindness'),
+    so pass the user's own words rather than trying to guess a formal tag."""
     logger.info("[TOOL] search_by_theme: theme=%r limit=%d", theme, limit)
     try:
+        from recommender.hybrid import hybrid_search
+
         with db.connect(row_factory=psycopg.rows.dict_row) as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT title_en, author_en, category, difficulty, themes, desc_en_short
-                    FROM books
-                    WHERE EXISTS (
-                        SELECT 1 FROM unnest(themes) t WHERE t ILIKE %s ESCAPE '\\'
-                    )
-                    ORDER BY is_foundational DESC NULLS LAST, difficulty ASC NULLS LAST
-                    LIMIT %s
-                    """,
-                    (f"%{_escape_like(theme)}%", limit),
-                )
-                rows = cur.fetchall()
+            rows = hybrid_search(conn, theme, limit=limit)
     except Exception as e:
         return f"Error searching by theme: {e}"
 
@@ -259,6 +251,7 @@ def search_by_theme(theme: str, limit: int = 8) -> str:
             "difficulty_label": diff_label,
             "description": r.get("desc_en_short") or "",
             "themes": r.get("themes") or [],
+            "match": r.get("match"),
         })
 
     return json.dumps({"theme": theme, "books": books}, ensure_ascii=False)
@@ -349,6 +342,8 @@ Keep the total response under 200 words."""
 
 if __name__ == "__main__":
     from recommender.query import warm_model
+
+    db.ensure_search_extensions()
 
     logger.info("Warming embedding and cross-encoder models...")
     warm_model()

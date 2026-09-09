@@ -95,6 +95,7 @@
   }
 
   .chip-cat { color: var(--gold); border-color: var(--gold-soft); background: var(--gold-soft); }
+  .chip-match { color: var(--accent-deep); border-color: var(--accent-glow); background: var(--accent-glow); }
 
   .desc {
     font-size: 13px;
@@ -160,6 +161,8 @@
       card.className = "card";
       const scorePct = typeof book.score === "number" ? Math.round(book.score * 100) + "%" : "";
       const themes = Array.isArray(book.themes) ? book.themes : [];
+      const matchLabels = { both: "keyword + meaning", semantic: "meaning match", keyword: "keyword match" };
+      const matchLabel = matchLabels[book.match] || "";
       card.innerHTML =
         '<div class="card-head">' +
           "<h3>" + escapeHtml(book.title) + "</h3>" +
@@ -169,6 +172,7 @@
         '<div class="chips">' +
           (book.category ? '<span class="chip chip-cat">' + escapeHtml(book.category) + "</span>" : "") +
           (book.difficulty ? '<span class="chip">Difficulty ' + escapeHtml(book.difficulty) + "/5</span>" : "") +
+          (matchLabel ? '<span class="chip chip-match">' + escapeHtml(matchLabel) + "</span>" : "") +
         "</div>" +
         (book.description ? '<p class="desc">' + escapeHtml(book.description) + "</p>" : "") +
         (themes.length

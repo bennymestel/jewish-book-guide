@@ -20,19 +20,25 @@ def difficulty_label(difficulty: int | None) -> str:
     return config.DIFFICULTY_LABELS.get(difficulty or 0, "")
 
 
-def build_profile(row: dict) -> str:
+def build_profile(row: dict, *, short: bool = False) -> str:
+    """Composite text profile for a book.
+
+    short=True uses only desc_en_short — the cross-encoder re-ranks with it so a
+    theme search stays ~1s instead of ~6-20s on the full description."""
     title = row["title_en"]
     author = f"by {row['author_en']}" if row.get("author_en") else ""
     difficulty = difficulty_label(row.get("difficulty"))
     themes_str = ", ".join(row["themes"]) if row.get("themes") else ""
-    desc_long = row.get("desc_en") or ""
-    desc_short = row.get("desc_en_short") or ""
+    if short:
+        desc = row.get("desc_en_short") or ""
+    else:
+        desc = row.get("desc_en") or row.get("desc_en_short") or ""
 
     parts = [
         title,
         author,
         themes_str,
-        desc_long,
+        desc,
     ]
     return " | ".join(p for p in parts if p)
 

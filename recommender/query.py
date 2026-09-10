@@ -94,9 +94,11 @@ def _query_vector(
     exclude_ids: list[int],
     top_k: int = 20,
     min_cosine: float | None = None,
+    difficulty_max: int | None = None,
 ) -> list[dict]:
     exclude_clause = f"AND id NOT IN ({', '.join(['%s'] * len(exclude_ids))})" if exclude_ids else ""
     floor_clause = "AND 1 - (embedding <=> %s::vector) >= %s" if min_cosine is not None else ""
+    difficulty_clause = "AND difficulty <= %s" if difficulty_max is not None else ""
     sql = f"""
         SELECT
             id, sefaria_key, title_en,
@@ -108,6 +110,7 @@ def _query_vector(
         WHERE embedding IS NOT NULL
           {exclude_clause}
           {floor_clause}
+          {difficulty_clause}
         ORDER BY embedding <=> %s::vector
         LIMIT %s
     """
@@ -116,6 +119,8 @@ def _query_vector(
         params.extend(exclude_ids)
     if min_cosine is not None:
         params.extend([vector, min_cosine])
+    if difficulty_max is not None:
+        params.append(difficulty_max)
     params.extend([vector, top_k])
 
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -262,7 +267,7 @@ def recommend(
 
         if user_query:
             encoder = _get_cross_encoder()
-            pairs = [(user_query, build_profile(c)) for c in candidates]
+            pairs = [(user_query, build_profile(c, short=True)) for c in candidates]
             cross_scores = list(encoder.predict(pairs, activation_fn=torch.nn.Identity()))
         else:
             cross_scores = [None] * len(candidates)

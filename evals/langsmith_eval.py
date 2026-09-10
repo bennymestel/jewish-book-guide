@@ -2,7 +2,7 @@
 LangSmith evaluation path for the Jewish Book Guide agent.
 
 Usage:
-    python -m evals.langsmith_eval [--mode simple|multi]
+    python -m evals.langsmith_eval [--mode simple|multi] [--case ID ...] [-k SUBSTRING]
 
 Syncs CASES to a LangSmith dataset and runs a named experiment with five evaluators
 (tools, args, grounded, difficulty, quality) that reuse the same logic as the local
@@ -39,6 +39,7 @@ from evals.checks import (
 )
 from evals.judge import judge_reply
 from evals.cases import CASES
+from evals.run_evals import select_cases
 
 DATASET_NAME = "jewish-book-guide-agent"
 EXPERIMENT_PREFIX = "jewish-book-guide-agent"
@@ -187,7 +188,7 @@ async def quality_evaluator(outputs: dict, reference_outputs: dict) -> dict:
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 
-async def run_langsmith_evals(mode: str = "simple") -> None:
+async def run_langsmith_evals(mode: str = "simple", case_ids: set[str] | None = None) -> None:
     if not os.environ.get("LANGCHAIN_API_KEY"):
         print(
             "LANGCHAIN_API_KEY is not set — cannot run LangSmith evaluation.\n"
@@ -197,7 +198,17 @@ async def run_langsmith_evals(mode: str = "simple") -> None:
         sys.exit(1)
 
     client = Client()
-    _sync_dataset(client)
+    _sync_dataset(client)  # always syncs all cases — a filtered run must not wipe the rest
+
+    # When a filter is active, run only the matching examples but leave the dataset whole.
+    data = DATASET_NAME
+    if case_ids is not None:
+        dataset = client.read_dataset(dataset_name=DATASET_NAME)
+        data = [
+            ex for ex in client.list_examples(dataset_id=dataset.id)
+            if ex.outputs and ex.outputs.get("id") in case_ids
+        ]
+        logger.info("Filtered to %d example(s): %s", len(data), sorted(case_ids))
 
     global _graph, _flatten_subagents
     logger.info("Building agent graph (mode=%s)", mode)
@@ -210,7 +221,7 @@ async def run_langsmith_evals(mode: str = "simple") -> None:
     )
     results = await aevaluate(
         _target,
-        data=DATASET_NAME,
+        data=data,
         evaluators=[
             tools_evaluator,
             args_evaluator,
@@ -237,8 +248,21 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["simple", "multi"], default="simple")
+    parser.add_argument("--case", action="append", metavar="ID",
+                        help="run only this case id (repeatable)")
+    parser.add_argument("-k", dest="keyword", metavar="SUBSTRING",
+                        help="run only cases whose id contains this substring")
     args = parser.parse_args()
-    asyncio.run(run_langsmith_evals(args.mode))
+
+    case_ids = None
+    if args.case or args.keyword:
+        selected = select_cases(args.case, args.keyword)
+        if not selected:
+            print("No cases matched the filter.")
+            sys.exit(2)
+        case_ids = {c["id"] for c in selected}
+
+    asyncio.run(run_langsmith_evals(args.mode, case_ids))
 
 
 if __name__ == "__main__":

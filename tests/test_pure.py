@@ -15,6 +15,7 @@ from ingestion.embed import build_profile
 from recommender.query import _score
 from recommender.hybrid import rrf_fuse
 from mcp_server.server import _escape_like
+from evals.checks import extract_titles
 
 
 # ── build_profile ─────────────────────────────────────────────────────────────
@@ -57,6 +58,35 @@ def test_build_profile_handles_missing_themes():
     profile = build_profile(_book(themes=None))
     # Should not raise; title still present
     assert "Tanya" in profile
+
+
+def test_build_profile_falls_back_to_short_desc():
+    # No desc_en (e.g. a query-time row) must still carry a description so the
+    # embedding isn't built from a description-less string.
+    profile = build_profile(_book(desc_en=None))
+    assert "Foundational Chabad text." in profile
+
+
+def test_build_profile_short_uses_short_desc_only():
+    # short=True is what the cross-encoder re-rank passes — the long desc_en must
+    # be left out so a theme search stays ~1s instead of ~6-20s.
+    profile = build_profile(_book(), short=True)
+    assert "Foundational Chabad text." in profile
+    assert "foundational text of Chabad Chasidut" not in profile
+
+
+# ── extract_titles ────────────────────────────────────────────────────────────
+
+def test_extract_titles_accepts_recommendation_line():
+    reply = "Mesillat Yesharim - Ramchal - Difficulty: 2 - a guide to piety."
+    assert extract_titles(reply) == {"Mesillat Yesharim"}
+
+
+def test_extract_titles_rejects_prose_line_with_dash():
+    # Prose with a stray dash and no "Difficulty:" must not be treated as a title —
+    # this is the regression that let trigram fallback resolve it to a random book.
+    reply = "Week 1 - begin with the introduction and read slowly."
+    assert extract_titles(reply) == set()
 
 
 # ── _score ────────────────────────────────────────────────────────────────────

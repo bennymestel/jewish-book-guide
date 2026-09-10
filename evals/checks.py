@@ -37,12 +37,13 @@ def extract_titles(reply: str) -> set[str]:
     Recommendations are formatted "Title - Author - Difficulty: N - desc" per the
     system prompt. They may appear as plain lines, or prefixed by a list marker.
     We capture the segment before the first dash, then strip markdown bold markers.
+    Only lines containing "Difficulty:" count, so prose with a stray dash is ignored.
     """
     titles: set[str] = set()
 
-    # Match optional list prefix (e.g. "1. " or "* " or "- "), then capture up to the first dash.
-    # Also matches bare "Title - ..." lines with no list prefix.
-    for match in re.finditer(r"^(?:[\d\-\*•]+\.?\s+)?(\*{0,2}[^:\n\-]{4,79}\*{0,2})\s+-", reply, re.MULTILINE):
+    # Optional list prefix ("1. ", "* ", "- "), then the title up to the first dash,
+    # then require "Difficulty:" on the same line to confirm it's a recommendation.
+    for match in re.finditer(r"^(?:[\d\-\*•]+\.?\s+)?(\*{0,2}[^:\n\-]{4,79}\*{0,2})\s+-[^\n]*Difficulty:", reply, re.MULTILINE):
         candidate = re.sub(r"\*+", "", match.group(1)).strip()
         if 3 < len(candidate) < 80:
             titles.add(candidate)

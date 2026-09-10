@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 # A hung Gemini call or MCP server would otherwise pin a request (and, on a
 # rate-limited public deployment, a slot) indefinitely.
 LLM_TIMEOUT_SECONDS = 30
-MCP_TIMEOUT = timedelta(seconds=15)
+MCP_TIMEOUT = timedelta(seconds=15)  # HTTP request timeout — POSTs return fast
+# Must outlast the slowest tool (search_by_theme cross-encode) or the client
+# drops the SSE stream mid-call and hangs on reconnect.
+MCP_READ_TIMEOUT = timedelta(seconds=90)
 MCP_SSE_TIMEOUT_SECONDS = 15  # mcp's sse_client only accepts float, unlike streamable_http
 
 
@@ -92,7 +95,7 @@ async def load_books_tools() -> tuple[list, object | None]:
     url = os.getenv("BOOKS_MCP_URL", "http://localhost:8001/mcp")
     return await _load_mcp_tools(
         "books",
-        {"transport": "streamable_http", "url": url, "timeout": MCP_TIMEOUT, "sse_read_timeout": MCP_TIMEOUT},
+        {"transport": "streamable_http", "url": url, "timeout": MCP_TIMEOUT, "sse_read_timeout": MCP_READ_TIMEOUT},
     )
 
 

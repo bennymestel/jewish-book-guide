@@ -82,7 +82,11 @@ CASES: list[dict] = [
         # Chasidut/Musar/Jewish Thought local collection. The agent should fall back to
         # the Sefaria MCP tools (get_text or get_text_catalogue_info) to answer.
         "input": "Can you tell me about the book of Vayikra and what it covers?",
-        "required_tools": {"get_text_catalogue_info"},
+        # Any Sefaria retrieval tool counts — the point is that the fallback happened.
+        "required_tools": {
+            "get_text_catalogue_info", "get_text", "get_topic_details",
+            "text_search", "english_semantic_search", "get_text_or_category_shape",
+        },
         "max_difficulty": None,
         "expect_grounded": False,
     },
@@ -165,20 +169,28 @@ CASES: list[dict] = [
             "I loved Tanya. What should I read next?",
             "That sounds interesting but I want something about prayer, closer to a beginner level.",
         ],
-        "required_tools": {"get_recommendations", "browse_collection"},
+        "required_tools": {"get_recommendations", "browse_collection", "search_by_theme"},
         "max_difficulty": 2,
         "expect_grounded": True,
         "min_titles": 1,
-        # Asserts the agent passed the user's own topical words through, not just the seed —
-        # this is what lets get_recommendations' cross-encoder re-ranking actually engage,
-        # rather than falling back to plain cosine + difficulty penalty.
+        # Asserts the agent threaded the user's own words through turn 2 — the topic
+        # ("prayer") and the difficulty preference — instead of leaning on the seed
+        # alone. Either retrieval path counts: get_recommendations(user_query=...) or
+        # search_by_theme(theme=..., difficulty_max<=2).
         "tool_arg_check": lambda calls: (
             any(
                 c["name"] == "get_recommendations"
                 and "prayer" in (c["args"].get("user_query") or "").lower()
                 for c in calls
+            )
+            or any(
+                c["name"] == "search_by_theme"
+                and "prayer" in (c["args"].get("theme") or "").lower()
+                and (c["args"].get("difficulty_max") or 99) <= 2
+                for c in calls
             ),
-            "get_recommendations was not called with the user's topical query ('prayer')",
+            "neither get_recommendations(user_query~'prayer') nor "
+            "search_by_theme(theme~'prayer', difficulty_max<=2) was called",
         ),
         "judge": (
             "The assistant's final reply should recommend books appropriate for a beginner "

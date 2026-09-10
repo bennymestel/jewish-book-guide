@@ -31,10 +31,12 @@ def lexical_search(
     exclude_ids: list[int] | None = None,
     top_k: int = config.HYBRID_ARM_TOP_K,
     min_similarity: float = config.TRIGRAM_MIN_SIMILARITY,
+    difficulty_max: int | None = None,
 ) -> list[dict]:
     """Top-k books by trigram similarity of title/author/key/themes to query_text."""
     exclude_ids = exclude_ids or []
     exclude_clause = f"AND id NOT IN ({', '.join(str(i) for i in exclude_ids)})" if exclude_ids else ""
+    difficulty_clause = "AND difficulty <= %(diff_max)s" if difficulty_max is not None else ""
     sql = f"""
         SELECT * FROM (
             SELECT
@@ -47,13 +49,15 @@ def lexical_search(
                     0.8 * similarity(coalesce(author_en, ''), %(q)s)
                 ) AS lex_sim
             FROM books
-            WHERE true {exclude_clause}
+            WHERE true {exclude_clause} {difficulty_clause}
         ) scored
         WHERE lex_sim >= %(min_sim)s
         ORDER BY lex_sim DESC
         LIMIT %(top_k)s
     """
     params: dict = {"q": query_text, "min_sim": min_similarity, "top_k": top_k}
+    if difficulty_max is not None:
+        params["diff_max"] = difficulty_max
 
     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
         cur.execute(sql, params)
@@ -74,17 +78,22 @@ def hybrid_search(
     query_text: str,
     limit: int = 8,
     rerank: bool = True,
+    difficulty_max: int | None = None,
 ) -> list[dict]:
     """Dense + lexical retrieval, RRF-fused, then cross-encoder re-ranked.
-    Returns up to `limit` books, each tagged with how it was matched."""
+    Returns up to `limit` books, each tagged with how it was matched.
+    difficulty_max, if set, filters both arms in SQL before fusion."""
     from recommender.query import _get_model, _get_cross_encoder, _query_vector
     from ingestion.embed import build_profile
 
     model = _get_model()
     vector = model.encode([query_text])[0].tolist()
 
-    dense_rows = _query_vector(conn, vector, exclude_ids=[], top_k=config.HYBRID_ARM_TOP_K, min_cosine=config.HYBRID_MIN_COSINE)
-    lexical_rows = lexical_search(conn, query_text)
+    dense_rows = _query_vector(
+        conn, vector, exclude_ids=[], top_k=config.HYBRID_ARM_TOP_K,
+        min_cosine=config.HYBRID_MIN_COSINE, difficulty_max=difficulty_max,
+    )
+    lexical_rows = lexical_search(conn, query_text, difficulty_max=difficulty_max)
 
     dense_ids = [r["id"] for r in dense_rows]
     lexical_ids = [r["id"] for r in lexical_rows]
@@ -103,7 +112,7 @@ def hybrid_search(
 
     if rerank and candidates:
         encoder = _get_cross_encoder()
-        pairs = [(query_text, build_profile(c)) for c in candidates]
+        pairs = [(query_text, build_profile(c, short=True)) for c in candidates]
         cross_scores = list(encoder.predict(pairs, activation_fn=torch.nn.Identity()))
         for c, s in zip(candidates, cross_scores):
             c["cross_score"] = float(s)

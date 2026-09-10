@@ -45,6 +45,8 @@ def _build_judge_llm() -> ChatGoogleGenerativeAI:
         # temperature=0 for deterministic grading; same-model self-preference bias is
         # further reduced by using binary scope/faithfulness rubrics, not open-ended quality.
         temperature=0,
+        timeout=30,     # a hung judge call would otherwise wedge the whole eval run
+        max_retries=2,
     )
 
 

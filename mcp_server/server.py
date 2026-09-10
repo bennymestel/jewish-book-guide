@@ -221,18 +221,19 @@ def browse_collection(
 
 
 @mcp.tool(meta={"ui": {"resourceUri": "ui://jewish-books/book-cards"}})
-def search_by_theme(theme: str, limit: int = 8) -> str:
+def search_by_theme(theme: str, limit: int = 8, difficulty_max: int | None = None) -> str:
     """Find books related to a theme or topic — e.g. 'prayer', 'teshuvah', 'Kabbalah',
     'love of God', or any other word or short phrase describing what the user wants to
     read about. Not limited to exact theme tags: matches by meaning (semantic search)
     and by spelling (handles transliteration variants like 'chesed'/'kindness'),
-    so pass the user's own words rather than trying to guess a formal tag."""
-    logger.info("[TOOL] search_by_theme: theme=%r limit=%d", theme, limit)
+    so pass the user's own words rather than trying to guess a formal tag.
+    difficulty_max: show only books at or below this difficulty level 1-5 (optional)."""
+    logger.info("[TOOL] search_by_theme: theme=%r limit=%d difficulty_max=%r", theme, limit, difficulty_max)
     try:
         from recommender.hybrid import hybrid_search
 
         with db.connect(row_factory=psycopg.rows.dict_row) as conn:
-            rows = hybrid_search(conn, theme, limit=limit)
+            rows = hybrid_search(conn, theme, limit=limit, difficulty_max=difficulty_max)
     except Exception as e:
         return f"Error searching by theme: {e}"
 

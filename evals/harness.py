@@ -29,6 +29,7 @@ load_dotenv()
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+import db
 from agent.graph import build_graph, load_books_tools, load_youtube_tools, load_sefaria_tools
 from agent.multi_graph import build_multi_graph
 
@@ -53,6 +54,8 @@ async def build_eval_graph(mode: str = "simple"):
     mode="simple" (default): the flat ReAct graph, unchanged from before.
     mode="multi": the supervisor/agents-as-tools graph.
     """
+    db.ensure_search_extensions()  # create pg_trgm if missing, like the MCP server does
+
     books_tools, _ = await load_books_tools()
     youtube_tools, _ = await load_youtube_tools()
     sefaria_tools, _ = await load_sefaria_tools()
@@ -136,21 +139,22 @@ async def run_conversation(
     Use for multi-turn eval cases (cases with "inputs" instead of "input").
 
     Set flatten_subagents=True (use for mode="multi") to reconstruct nested
-    specialist tool calls for checks.py; only the last turn's trace is returned,
-    consistent with the non-flattened path returning only the final message list.
+    specialist tool calls for checks.py; the trace is accumulated across all
+    turns so a tool call in turn 1 is still visible to the checks.
     """
     all_messages: list = []
     reply = ""
-    turn_messages: list = []
+    flat_trace: list = []
     for turn in turns:
         state = {"messages": all_messages + [HumanMessage(content=turn)]}
         if flatten_subagents:
             reply, turn_messages, final_state = await _run_streamed(graph, state)
+            flat_trace += turn_messages
             all_messages = final_state["messages"]
         else:
             result = await graph.ainvoke(state)
             all_messages = result["messages"]
             reply = _extract_reply(all_messages)
     if flatten_subagents:
-        return reply, turn_messages
+        return reply, flat_trace
     return reply, all_messages

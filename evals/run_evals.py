@@ -2,7 +2,7 @@
 Eval runner for the Jewish Book Guide agent.
 
 Usage:
-    python -m evals.run_evals [--mode simple|multi|both]
+    python -m evals.run_evals [--mode simple|multi|both] [--case ID ...] [-k SUBSTRING]
 
 Each case is checked with up to five passes:
   - Tools:      at least one required tool was called
@@ -49,13 +49,115 @@ def _tick(passed: bool) -> str:
     return "[green]PASS[/green]" if passed else "[red]FAIL[/red]"
 
 
-async def run_evals(mode: str = "simple") -> tuple[bool, int, int]:
-    """Run the full case suite against one graph mode ("simple" or "multi").
-    Returns (all_passed, passed_count, total)."""
+def select_cases(case_ids: list[str] | None, keyword: str | None) -> list[dict]:
+    """Filter CASES by explicit --case ids and/or a -k substring on the id.
+    No filters -> all cases, so the default run is unchanged."""
+    cases = CASES
+    if case_ids:
+        wanted = set(case_ids)
+        cases = [c for c in cases if c["id"] in wanted]
+    if keyword:
+        cases = [c for c in cases if keyword.lower() in c["id"].lower()]
+    return cases
+
+
+async def _evaluate_case(case: dict, graph, flatten_subagents: bool) -> tuple[bool, list[str]]:
+    """Run one case and grade its five gates. Returns (passed, row_cells)."""
+    # Support both single-turn ("input") and multi-turn ("inputs") cases.
+    if "inputs" in case:
+        reply, messages = await run_conversation(
+            graph, case["inputs"], flatten_subagents=flatten_subagents
+        )
+        user_input = " → ".join(case["inputs"])
+    else:
+        reply, messages = await run_message(
+            graph, case["input"], flatten_subagents=flatten_subagents
+        )
+        user_input = case["input"]
+
+    # Tool trajectory check
+    if case.get("required_tools"):
+        tools_ok = assert_tool_used(messages, case["required_tools"])
+        if not tools_ok:
+            called = {tc["name"] for tc in tools_called(messages)}
+            logger.warning(
+                "[%s] tool check failed: called=%s, required one of %s",
+                case["id"], called, case["required_tools"],
+            )
+    else:
+        tools_ok = True
+
+    # Tool argument check
+    if case.get("tool_arg_check"):
+        args_ok, args_reason = assert_tool_args(messages, case["tool_arg_check"])
+        if not args_ok:
+            logger.warning("[%s] tool arg check failed: %s", case["id"], args_reason)
+    else:
+        args_ok = True
+
+    # Grounding check
+    if case.get("expect_grounded", True):
+        titles = extract_titles(reply)
+        grounded_ok, unresolved = assert_grounded(titles)
+        min_titles = case.get("min_titles", 0)
+        if len(titles) < min_titles:
+            grounded_ok = False
+            logger.warning(
+                "[%s] grounding failed: expected >=%d titles, extracted %d",
+                case["id"], min_titles, len(titles),
+            )
+        elif not grounded_ok:
+            logger.warning("[%s] grounding failed: unresolved titles=%s", case["id"], unresolved)
+    else:
+        grounded_ok = True
+
+    # Difficulty constraint check
+    if case.get("max_difficulty") is not None:
+        titles = extract_titles(reply)
+        constraint_ok, violations = assert_difficulty_max(titles, case["max_difficulty"])
+        if violations:
+            logger.warning("[%s] difficulty constraint failed: %s", case["id"], violations)
+    else:
+        constraint_ok = True
+
+    # LLM-as-judge quality check
+    if case.get("judge"):
+        tool_context = extract_tool_context(messages)
+        quality_ok, quality_reason = await judge_reply(
+            input=user_input,
+            reply=reply,
+            rubric=case["judge"],
+            context=tool_context,
+        )
+        if not quality_ok:
+            logger.warning("[%s] quality check failed: %s", case["id"], quality_reason)
+        else:
+            logger.info("[%s] quality check passed: %s", case["id"], quality_reason)
+    else:
+        quality_ok = True
+
+    passed = tools_ok and args_ok and grounded_ok and constraint_ok and quality_ok
+
+    cells = [
+        case["id"],
+        _tick(tools_ok) if case.get("required_tools") else "[dim]n/a[/dim]",
+        _tick(args_ok) if case.get("tool_arg_check") else "[dim]n/a[/dim]",
+        _tick(grounded_ok) if case.get("expect_grounded", True) else "[dim]skipped[/dim]",
+        _tick(constraint_ok) if case.get("max_difficulty") is not None else "[dim]n/a[/dim]",
+        _tick(quality_ok) if case.get("judge") else "[dim]n/a[/dim]",
+        _tick(passed),
+    ]
+    return passed, cells
+
+
+async def run_evals(mode: str = "simple", cases: list[dict] | None = None) -> tuple[bool, int, int]:
+    """Run the case suite against one graph mode ("simple" or "multi").
+    cases defaults to the full CASES list. Returns (all_passed, passed_count, total)."""
+    cases = CASES if cases is None else cases
     logger.info("Building agent graph (mode=%s)", mode)
     graph = await build_eval_graph(mode)
     flatten_subagents = mode == "multi"
-    logger.info("Running %d cases", len(CASES))
+    logger.info("Running %d cases", len(cases))
 
     table = Table(title=f"mode={mode}", box=box.SIMPLE_HEAVY, show_lines=True)
     table.add_column("Case", style="cyan", no_wrap=True)
@@ -69,111 +171,34 @@ async def run_evals(mode: str = "simple") -> tuple[bool, int, int]:
     all_passed = True
     passed_count = 0
 
-    for case in CASES:
+    for case in cases:
         logger.info("Running case: %s", case["id"])
+        try:
+            passed, cells = await _evaluate_case(case, graph, flatten_subagents)
+        except Exception:
+            # One broken case (e.g. a DB error) shouldn't abort the whole table.
+            logger.exception("[%s] case errored", case["id"])
+            all_passed = False
+            table.add_row(case["id"], *(["[red]ERROR[/red]"] * 6))
+            continue
 
-        # Support both single-turn ("input") and multi-turn ("inputs") cases.
-        if "inputs" in case:
-            reply, messages = await run_conversation(
-                graph, case["inputs"], flatten_subagents=flatten_subagents
-            )
-            user_input = " → ".join(case["inputs"])
-        else:
-            reply, messages = await run_message(
-                graph, case["input"], flatten_subagents=flatten_subagents
-            )
-            user_input = case["input"]
-
-        # Tool trajectory check
-        if case.get("required_tools"):
-            tools_ok = assert_tool_used(messages, case["required_tools"])
-            if not tools_ok:
-                called = {tc["name"] for tc in tools_called(messages)}
-                logger.warning(
-                    "[%s] tool check failed: called=%s, required one of %s",
-                    case["id"], called, case["required_tools"],
-                )
-        else:
-            tools_ok = True
-
-        # Tool argument check
-        if case.get("tool_arg_check"):
-            args_ok, args_reason = assert_tool_args(messages, case["tool_arg_check"])
-            if not args_ok:
-                logger.warning("[%s] tool arg check failed: %s", case["id"], args_reason)
-        else:
-            args_ok = True
-            args_reason = ""
-
-        # Grounding check
-        if case.get("expect_grounded", True):
-            titles = extract_titles(reply)
-            grounded_ok, unresolved = assert_grounded(titles)
-            min_titles = case.get("min_titles", 0)
-            if len(titles) < min_titles:
-                grounded_ok = False
-                logger.warning(
-                    "[%s] grounding failed: expected >=%d titles, extracted %d",
-                    case["id"], min_titles, len(titles),
-                )
-            elif not grounded_ok:
-                logger.warning("[%s] grounding failed: unresolved titles=%s", case["id"], unresolved)
-        else:
-            grounded_ok = True
-
-        # Difficulty constraint check
-        if case.get("max_difficulty") is not None:
-            titles = extract_titles(reply)
-            constraint_ok, violations = assert_difficulty_max(titles, case["max_difficulty"])
-            if violations:
-                logger.warning("[%s] difficulty constraint failed: %s", case["id"], violations)
-        else:
-            constraint_ok = True
-
-        # LLM-as-judge quality check
-        if case.get("judge"):
-            tool_context = extract_tool_context(messages)
-            quality_ok, quality_reason = await judge_reply(
-                input=user_input,
-                reply=reply,
-                rubric=case["judge"],
-                context=tool_context,
-            )
-            if not quality_ok:
-                logger.warning("[%s] quality check failed: %s", case["id"], quality_reason)
-            else:
-                logger.info("[%s] quality check passed: %s", case["id"], quality_reason)
-        else:
-            quality_ok = True
-            quality_reason = ""
-
-        passed = tools_ok and args_ok and grounded_ok and constraint_ok and quality_ok
         if passed:
             passed_count += 1
         else:
             all_passed = False
-
-        tools_cell = _tick(tools_ok) if case.get("required_tools") else "[dim]n/a[/dim]"
-        args_cell = _tick(args_ok) if case.get("tool_arg_check") else "[dim]n/a[/dim]"
-        grounded_cell = _tick(grounded_ok) if case.get("expect_grounded", True) else "[dim]skipped[/dim]"
-        constraint_cell = _tick(constraint_ok) if case.get("max_difficulty") is not None else "[dim]n/a[/dim]"
-        quality_cell = _tick(quality_ok) if case.get("judge") else "[dim]n/a[/dim]"
-
-        table.add_row(
-            case["id"], tools_cell, args_cell, grounded_cell, constraint_cell, quality_cell, _tick(passed)
-        )
+        table.add_row(*cells)
 
     console.print(table)
-    total = len(CASES)
+    total = len(cases)
     color = "green" if all_passed else "red"
     console.print(f"[bold {color}]{passed_count}/{total} cases passed[/bold {color}]")
     return all_passed, passed_count, total
 
 
-async def run_evals_both() -> bool:
+async def run_evals_both(cases: list[dict] | None = None) -> bool:
     """Run the suite against both graphs and print a side-by-side comparison."""
-    simple_passed, simple_count, total = await run_evals("simple")
-    multi_passed, multi_count, _ = await run_evals("multi")
+    simple_passed, simple_count, total = await run_evals("simple", cases)
+    multi_passed, multi_count, _ = await run_evals("multi", cases)
     console.print(
         f"\n[bold]simple: {simple_count}/{total} passed   "
         f"multi: {multi_count}/{total} passed[/bold]"
@@ -188,12 +213,21 @@ def main():
     )
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["simple", "multi", "both"], default="simple")
+    parser.add_argument("--case", action="append", metavar="ID",
+                        help="run only this case id (repeatable)")
+    parser.add_argument("-k", dest="keyword", metavar="SUBSTRING",
+                        help="run only cases whose id contains this substring")
     args = parser.parse_args()
 
+    cases = select_cases(args.case, args.keyword)
+    if not cases:
+        console.print("[red]No cases matched the filter.[/red]")
+        sys.exit(2)
+
     if args.mode == "both":
-        all_passed = asyncio.run(run_evals_both())
+        all_passed = asyncio.run(run_evals_both(cases))
     else:
-        all_passed, _, _ = asyncio.run(run_evals(args.mode))
+        all_passed, _, _ = asyncio.run(run_evals(args.mode, cases))
     sys.exit(0 if all_passed else 1)
 
 

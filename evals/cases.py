@@ -82,7 +82,11 @@ CASES: list[dict] = [
         # Chasidut/Musar/Jewish Thought local collection. The agent should fall back to
         # the Sefaria MCP tools (get_text or get_text_catalogue_info) to answer.
         "input": "Can you tell me about the book of Vayikra and what it covers?",
-        "required_tools": {"get_text_catalogue_info"},
+        # Any Sefaria retrieval tool counts — the point is that the fallback happened.
+        "required_tools": {
+            "get_text_catalogue_info", "get_text", "get_topic_details",
+            "text_search", "english_semantic_search", "get_text_or_category_shape",
+        },
         "max_difficulty": None,
         "expect_grounded": False,
     },

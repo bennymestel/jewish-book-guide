@@ -14,15 +14,12 @@ The supervisor never sees raw MCP tools — only the three consult_* wrappers.
 """
 from __future__ import annotations
 
-import os
-
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 
-import config
-from agent.graph import LLM_TIMEOUT_SECONDS, build_graph
+from agent.graph import build_graph
+from agent.llm import build_chat_model
 from agent.prompts_multi import (
     BOOKS_AGENT_PROMPT,
     SEFARIA_AGENT_PROMPT,
@@ -35,6 +32,7 @@ async def build_multi_graph(
     books_tools: list,
     sefaria_tools: list,
     youtube_tools: list,
+    model: str | None = None,
 ):
     """Build and return the supervisor multi-agent graph.
 
@@ -46,13 +44,7 @@ async def build_multi_graph(
     Returns a compiled graph with the same AgentState shape as the simple graph,
     so session handling in server.py is identical across modes.
     """
-    llm = ChatGoogleGenerativeAI(
-        model=config.GEMINI_MODEL,
-        google_api_key=os.environ["GOOGLE_API_KEY"],
-        temperature=0.3,
-        timeout=LLM_TIMEOUT_SECONDS,
-        max_retries=2,  # default retry/backoff can outlast Cloud Run's request timeout on sustained 429s
-    )
+    llm = build_chat_model(model)
 
     # ── Specialist agents ──────────────────────────────────────────────────────
     books_agent = create_react_agent(llm, books_tools, prompt=BOOKS_AGENT_PROMPT)
@@ -90,4 +82,4 @@ async def build_multi_graph(
 
     # The supervisor is the existing ReAct StateGraph with the consult_* tools
     # bound in place of the raw MCP tools.
-    return await build_graph(tools=consult_tools, system_prompt=SUPERVISOR_PROMPT)
+    return await build_graph(tools=consult_tools, system_prompt=SUPERVISOR_PROMPT, model=model)

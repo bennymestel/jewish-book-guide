@@ -16,6 +16,7 @@ from recommender.query import _score
 from recommender.hybrid import rrf_fuse
 from mcp_server.server import _escape_like
 from evals.checks import extract_titles
+from agent.llm import resolve_provider
 
 
 # ── build_profile ─────────────────────────────────────────────────────────────
@@ -230,3 +231,15 @@ def test_rrf_fuse_uses_config_k():
     fused_default = rrf_fuse([[1]])
     fused_explicit_k = rrf_fuse([[1]], k=config.RRF_K)
     assert fused_default == fused_explicit_k
+
+
+# ── agent.llm provider routing ───────────────────────────────────────────────────
+# Guards the invariant that Cloud Run (Gemini-only model ids, no LLM_PROVIDER set)
+# can never resolve to OpenRouter.
+
+def test_resolve_provider_plain_id_is_google():
+    assert resolve_provider("gemini-3.1-flash-lite-preview") == "google"
+
+
+def test_resolve_provider_slashed_id_is_openrouter():
+    assert resolve_provider("qwen/qwen3-235b-a22b") == "openrouter"

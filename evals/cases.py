@@ -186,7 +186,7 @@ CASES: list[dict] = [
             or any(
                 c["name"] == "search_by_theme"
                 and "prayer" in (c["args"].get("theme") or "").lower()
-                and (c["args"].get("difficulty_max") or 99) <= 2
+                and int(c["args"].get("difficulty_max") or 99) <= 2
                 for c in calls
             ),
             "neither get_recommendations(user_query~'prayer') nor "

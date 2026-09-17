@@ -18,12 +18,19 @@ GOOGLE_API_KEY=...       # required
 YOUTUBE_API_KEY=...      # optional; YouTube search is skipped if absent
 DATABASE_URL=...         # defaults to postgresql://localhost/books
 GEMINI_MODEL=...         # defaults to gemini-3.1-flash-lite-preview
-JUDGE_MODEL=...          # optional; defaults to GEMINI_MODEL
+JUDGE_MODEL=...          # optional; defaults to GEMINI_MODEL — set to an OpenRouter model
+                         # (e.g. anthropic/claude-haiku-4.5) to hold the judge out from the
+                         # models under test and avoid self-preference bias
+OPENROUTER_API_KEY=...   # optional; needed for JUDGE_MODEL/AGENT_MODEL OpenRouter ids and evals.model_sweep
 
 # LangSmith observability (optional but recommended)
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=...     # your LangSmith API key
 LANGCHAIN_PROJECT=...     # defaults to jewish-book-guide
+
+# Local model experiments only — never set on Cloud Run
+AGENT_MODEL=...          # overrides GEMINI_MODEL for the agent; a "/" in the id routes to OpenRouter
+LLM_PROVIDER=...         # optional explicit override: google | openrouter
 ```
 
 ## Running the stack
@@ -52,6 +59,9 @@ uv run python -m evals.run_evals --mode both    # both, side by side
 # Same evals via LangSmith Datasets & Experiments (also needs LANGCHAIN_API_KEY)
 uv run python -m evals.langsmith_eval
 uv run python -m evals.langsmith_eval --mode multi
+
+# Multi-model comparison sweep (local only, needs OPENROUTER_API_KEY)
+uv run python -m evals.model_sweep --model gemini-3.1-flash-lite-preview --model qwen/qwen3.7-plus --markdown
 
 # After changing a dependency in pyproject.toml
 uv lock

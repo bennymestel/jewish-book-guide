@@ -2,7 +2,7 @@
 Eval runner for the Jewish Book Guide agent.
 
 Usage:
-    python -m evals.run_evals [--mode simple|multi|both] [--case ID ...] [-k SUBSTRING]
+    python -m evals.run_evals [--mode simple|multi|both] [--case ID ...] [-k SUBSTRING] [--model MODEL_ID]
 
 Each case is checked with up to five passes:
   - Tools:      at least one required tool was called
@@ -21,13 +21,18 @@ import asyncio
 import logging
 import sys
 import os
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from dotenv import load_dotenv
+load_dotenv()  # must run before `import config` so JUDGE_MODEL/AGENT_MODEL see .env
 
 from rich.console import Console
 from rich.table import Table
 from rich import box
 
+import config
 from evals.harness import build_eval_graph, run_message, run_conversation
 from evals.checks import (
     assert_tool_used,
@@ -61,8 +66,10 @@ def select_cases(case_ids: list[str] | None, keyword: str | None) -> list[dict]:
     return cases
 
 
-async def _evaluate_case(case: dict, graph, flatten_subagents: bool) -> tuple[bool, list[str]]:
-    """Run one case and grade its five gates. Returns (passed, row_cells)."""
+async def _evaluate_case(case: dict, graph, flatten_subagents: bool) -> dict:
+    """Run one case and grade its five gates. Returns a plain result dict —
+    see _format_row for how it becomes a printable table row."""
+    start = time.monotonic()
     # Support both single-turn ("input") and multi-turn ("inputs") cases.
     if "inputs" in case:
         reply, messages = await run_conversation(
@@ -74,6 +81,7 @@ async def _evaluate_case(case: dict, graph, flatten_subagents: bool) -> tuple[bo
             graph, case["input"], flatten_subagents=flatten_subagents
         )
         user_input = case["input"]
+    elapsed = time.monotonic() - start
 
     # Tool trajectory check
     if case.get("required_tools"):
@@ -138,24 +146,40 @@ async def _evaluate_case(case: dict, graph, flatten_subagents: bool) -> tuple[bo
 
     passed = tools_ok and args_ok and grounded_ok and constraint_ok and quality_ok
 
-    cells = [
-        case["id"],
-        _tick(tools_ok) if case.get("required_tools") else "[dim]n/a[/dim]",
-        _tick(args_ok) if case.get("tool_arg_check") else "[dim]n/a[/dim]",
-        _tick(grounded_ok) if case.get("expect_grounded", True) else "[dim]skipped[/dim]",
-        _tick(constraint_ok) if case.get("max_difficulty") is not None else "[dim]n/a[/dim]",
-        _tick(quality_ok) if case.get("judge") else "[dim]n/a[/dim]",
-        _tick(passed),
+    return {
+        "id": case["id"],
+        "passed": passed,
+        "tools_ok": tools_ok,
+        "args_ok": args_ok,
+        "grounded_ok": grounded_ok,
+        "constraint_ok": constraint_ok,
+        "quality_ok": quality_ok,
+        "elapsed": elapsed,
+    }
+
+
+def _format_row(result: dict, case: dict) -> list[str]:
+    """Turn a plain _evaluate_case result into a rich-markup table row."""
+    return [
+        result["id"],
+        _tick(result["tools_ok"]) if case.get("required_tools") else "[dim]n/a[/dim]",
+        _tick(result["args_ok"]) if case.get("tool_arg_check") else "[dim]n/a[/dim]",
+        _tick(result["grounded_ok"]) if case.get("expect_grounded", True) else "[dim]skipped[/dim]",
+        _tick(result["constraint_ok"]) if case.get("max_difficulty") is not None else "[dim]n/a[/dim]",
+        _tick(result["quality_ok"]) if case.get("judge") else "[dim]n/a[/dim]",
+        f"{result['elapsed']:.1f}s",
+        _tick(result["passed"]),
     ]
-    return passed, cells
 
 
-async def run_evals(mode: str = "simple", cases: list[dict] | None = None) -> tuple[bool, int, int]:
+async def run_evals(
+    mode: str = "simple", cases: list[dict] | None = None, model: str | None = None
+) -> tuple[bool, int, int]:
     """Run the case suite against one graph mode ("simple" or "multi").
     cases defaults to the full CASES list. Returns (all_passed, passed_count, total)."""
     cases = CASES if cases is None else cases
-    logger.info("Building agent graph (mode=%s)", mode)
-    graph = await build_eval_graph(mode)
+    logger.info("Building agent graph (mode=%s, model=%s)", mode, model or config.AGENT_MODEL)
+    graph = await build_eval_graph(mode, model=model)
     flatten_subagents = mode == "multi"
     logger.info("Running %d cases", len(cases))
 
@@ -166,6 +190,7 @@ async def run_evals(mode: str = "simple", cases: list[dict] | None = None) -> tu
     table.add_column("Grounded", justify="center")
     table.add_column("Constraint", justify="center")
     table.add_column("Quality", justify="center")
+    table.add_column("Time", justify="center")
     table.add_column("Result", justify="center")
 
     all_passed = True
@@ -174,31 +199,32 @@ async def run_evals(mode: str = "simple", cases: list[dict] | None = None) -> tu
     for case in cases:
         logger.info("Running case: %s", case["id"])
         try:
-            passed, cells = await _evaluate_case(case, graph, flatten_subagents)
+            result = await _evaluate_case(case, graph, flatten_subagents)
         except Exception:
             # One broken case (e.g. a DB error) shouldn't abort the whole table.
             logger.exception("[%s] case errored", case["id"])
             all_passed = False
-            table.add_row(case["id"], *(["[red]ERROR[/red]"] * 6))
+            table.add_row(case["id"], *(["[red]ERROR[/red]"] * 7))
             continue
 
-        if passed:
+        if result["passed"]:
             passed_count += 1
         else:
             all_passed = False
-        table.add_row(*cells)
+        table.add_row(*_format_row(result, case))
 
     console.print(table)
     total = len(cases)
     color = "green" if all_passed else "red"
     console.print(f"[bold {color}]{passed_count}/{total} cases passed[/bold {color}]")
+    console.print(f"[dim]agent: {model or config.AGENT_MODEL}   judge: {config.JUDGE_MODEL}[/dim]")
     return all_passed, passed_count, total
 
 
-async def run_evals_both(cases: list[dict] | None = None) -> bool:
+async def run_evals_both(cases: list[dict] | None = None, model: str | None = None) -> bool:
     """Run the suite against both graphs and print a side-by-side comparison."""
-    simple_passed, simple_count, total = await run_evals("simple", cases)
-    multi_passed, multi_count, _ = await run_evals("multi", cases)
+    simple_passed, simple_count, total = await run_evals("simple", cases, model=model)
+    multi_passed, multi_count, _ = await run_evals("multi", cases, model=model)
     console.print(
         f"\n[bold]simple: {simple_count}/{total} passed   "
         f"multi: {multi_count}/{total} passed[/bold]"
@@ -217,6 +243,9 @@ def main():
                         help="run only this case id (repeatable)")
     parser.add_argument("-k", dest="keyword", metavar="SUBSTRING",
                         help="run only cases whose id contains this substring")
+    parser.add_argument("--model", metavar="MODEL_ID",
+                        help="override the agent model (defaults to AGENT_MODEL); "
+                             "a model id containing '/' routes to OpenRouter")
     args = parser.parse_args()
 
     cases = select_cases(args.case, args.keyword)
@@ -225,9 +254,9 @@ def main():
         sys.exit(2)
 
     if args.mode == "both":
-        all_passed = asyncio.run(run_evals_both(cases))
+        all_passed = asyncio.run(run_evals_both(cases, model=args.model))
     else:
-        all_passed, _, _ = asyncio.run(run_evals(args.mode, cases))
+        all_passed, _, _ = asyncio.run(run_evals(args.mode, cases, model=args.model))
     sys.exit(0 if all_passed else 1)
 
 

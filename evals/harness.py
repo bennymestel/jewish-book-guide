@@ -48,11 +48,12 @@ def _extract_reply(messages: list) -> str:
     return content or ""
 
 
-async def build_eval_graph(mode: str = "simple"):
+async def build_eval_graph(mode: str = "simple", model: str | None = None):
     """Build the agent graph the same way the server does at startup.
 
     mode="simple" (default): the flat ReAct graph, unchanged from before.
     mode="multi": the supervisor/agents-as-tools graph.
+    model: override the agent's LLM (e.g. for evals.model_sweep); defaults to AGENT_MODEL.
     """
     db.ensure_search_extensions()  # create pg_trgm if missing, like the MCP server does
 
@@ -65,11 +66,11 @@ async def build_eval_graph(mode: str = "simple"):
             "[harness] building multi-agent graph: books=%d sefaria=%d youtube=%d",
             len(books_tools), len(sefaria_tools), len(youtube_tools),
         )
-        return await build_multi_graph(books_tools, sefaria_tools, youtube_tools)
+        return await build_multi_graph(books_tools, sefaria_tools, youtube_tools, model=model)
 
     all_tools = books_tools + youtube_tools + sefaria_tools
     logger.info("[harness] loaded %d tools: %s", len(all_tools), [t.name for t in all_tools])
-    return await build_graph(tools=all_tools)
+    return await build_graph(tools=all_tools, model=model)
 
 
 async def _run_streamed(graph, state: dict) -> tuple[str, list, dict]:

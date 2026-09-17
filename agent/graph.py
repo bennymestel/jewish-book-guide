@@ -8,20 +8,18 @@ import os
 from datetime import timedelta
 
 from langchain_core.messages import SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
-import config
+from agent.llm import LLM_TIMEOUT_SECONDS, build_chat_model
 from agent.prompts import SYSTEM_PROMPT
 from agent.state import AgentState
 
 logger = logging.getLogger(__name__)
 
-# A hung Gemini call or MCP server would otherwise pin a request (and, on a
+# A hung LLM call or MCP server would otherwise pin a request (and, on a
 # rate-limited public deployment, a slot) indefinitely.
-LLM_TIMEOUT_SECONDS = 30
 MCP_TIMEOUT = timedelta(seconds=15)  # HTTP request timeout — POSTs return fast
 # Must outlast the slowest tool (search_by_theme cross-encode) or the client
 # drops the SSE stream mid-call and hangs on reconnect.
@@ -29,14 +27,8 @@ MCP_READ_TIMEOUT = timedelta(seconds=90)
 MCP_SSE_TIMEOUT_SECONDS = 15  # mcp's sse_client only accepts float, unlike streamable_http
 
 
-async def build_graph(tools: list = [], system_prompt: str = SYSTEM_PROMPT):
-    llm = ChatGoogleGenerativeAI(
-        model=config.GEMINI_MODEL,
-        google_api_key=os.environ["GOOGLE_API_KEY"],
-        temperature=0.3,
-        timeout=LLM_TIMEOUT_SECONDS,
-        max_retries=2,  # default retry/backoff can outlast Cloud Run's request timeout on sustained 429s
-    )
+async def build_graph(tools: list = [], system_prompt: str = SYSTEM_PROMPT, model: str | None = None):
+    llm = build_chat_model(model)
     llm_with_tools = llm.bind_tools(tools)
     tool_node = ToolNode(tools)
 

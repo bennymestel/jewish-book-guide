@@ -155,7 +155,7 @@ _Judge: anthropic/claude-haiku-4.5 (held out — not among the models compared)_
 ## Project structure
 
 ```
-agent/          LangGraph agent (graph.py, multi_graph.py supervisor, prompts, FastAPI server)
+agent/          LangGraph agent (graph.py, multi_graph.py supervisor, llm.py provider factory, prompts, FastAPI server)
 mcp_server/     Standalone MCP server exposing four tools, two resources, and two prompts
 ingestion/      Data pipeline (Sefaria fetch, embedding generation)
 recommender/    Two-stage recommendation engine + hybrid search pipeline
@@ -165,7 +165,7 @@ config.py       Central config (DB URL, model, re-ranking weights)
 db.py           Shared DB connection helper (bounded timeouts, pg_trgm setup)
 cli.py          Typer CLI entry point
 deploy/         Cloud Run deployment script
-evals/          End-to-end eval harness (tool trajectory, grounding, difficulty checks)
+evals/          End-to-end eval harness (tool trajectory, grounding, difficulty checks, cross-provider model sweep)
 tests/          Unit test suite
 ```
 

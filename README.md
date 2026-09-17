@@ -95,6 +95,7 @@ Sefaria API ──► ingestion/fetch_sefaria.py ──► books table (PostgreS
 - A Google Gemini API key
 - A YouTube Data API v3 key
 - A [LangSmith](https://smith.langchain.com) API key (optional — for agent tracing)
+- An [OpenRouter](https://openrouter.ai) API key (optional — for non-Gemini models: the judge, the comparison sweep, or `AGENT_MODEL`)
 
 ### Install
 
@@ -127,6 +128,30 @@ uv run python -m evals.langsmith_eval  # same evals via LangSmith dashboard (als
 
 The evals run single- and multi-turn questions through the real agent graph, checking tool usage, grounding, difficulty constraints, and LLM-as-judge quality. Run locally for a quick offline table, or via LangSmith for a tracked experiment dashboard with per-case scores and run-over-run comparison. `--mode` selects which graph to evaluate: `simple` (default, the flat ReAct graph) or `multi` (the supervisor/agents-as-tools graph); `both` is only available for `run_evals`.
 
+The quality gate is graded by `anthropic/claude-haiku-4.5` via OpenRouter, held out from every model under test so no contestant grades its own output.
+
+### Model comparison
+
+The agent's LLM is swappable per run via `AGENT_MODEL` (any [OpenRouter](https://openrouter.ai) model id, e.g. `qwen/qwen3.7-plus`) or `LLM_PROVIDER`. Production always runs Gemini directly — this sweep is local-only:
+
+```bash
+uv run python -m evals.model_sweep \
+    --model gemini-3.1-flash-lite-preview \
+    --model openai/gpt-5.6-luna \
+    --model deepseek/deepseek-v4.1-flash \
+    --model qwen/qwen3.7-plus \
+    --markdown
+```
+
+| Model | Pass | Tools | Grounded | Quality | Median time |
+|---|---|---|---|---|---|
+| gemini-3.1-flash-lite-preview | 14/14 | 12/12 | 9/9 | 3/3 | 3.2s |
+| openai/gpt-5.6-luna | 13/14 | 12/12 | 8/9 | 3/3 | 8.4s |
+| deepseek/deepseek-v4.1-flash | 14/14 | 12/12 | 9/9 | 3/3 | 9.3s |
+| qwen/qwen3.7-plus | 13/14 | 11/12 | 9/9 | 3/3 | 21.8s |
+
+_Judge: anthropic/claude-haiku-4.5 (held out — not among the models compared)_
+
 ## Project structure
 
 ```
@@ -149,7 +174,7 @@ tests/          Unit test suite
 | Layer | Technology |
 |-------|-----------|
 | Agent framework | LangGraph |
-| LLM | Google Gemini (via LangChain) |
+| LLM | Google Gemini (default) — any OpenRouter model via `AGENT_MODEL` |
 | Vector + lexical search | PostgreSQL + pgvector + pg_trgm |
 | Embeddings (bi-encoder) | sentence-transformers (all-MiniLM-L6-v2) |
 | Re-ranking (cross-encoder) | sentence-transformers (mxbai-rerank-xsmall-v1) |

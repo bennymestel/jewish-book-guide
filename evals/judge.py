@@ -13,10 +13,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
 import config
+from agent.llm import build_chat_model
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +39,12 @@ Reply with ONLY valid JSON in this exact format — nothing else:
 """
 
 
-def _build_judge_llm() -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model=config.JUDGE_MODEL,
-        google_api_key=os.environ["GOOGLE_API_KEY"],
-        # temperature=0 for deterministic grading; same-model self-preference bias is
-        # further reduced by using binary scope/faithfulness rubrics, not open-ended quality.
-        temperature=0,
+def _build_judge_llm() -> BaseChatModel:
+    # JUDGE_MODEL should be a model family held out from the agents under test (self-preference
+    # bias); binary scope/faithfulness rubrics are a second line of defence, not the main one.
+    return build_chat_model(
+        config.JUDGE_MODEL,
+        temperature=0,  # deterministic grading
         timeout=30,     # a hung judge call would otherwise wedge the whole eval run
         max_retries=2,
     )

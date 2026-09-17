@@ -9,7 +9,10 @@ DB_URL = os.getenv("DATABASE_URL", "postgresql://localhost/books")
 
 # ── LLM ───────────────────────────────────────────────────────────────────────
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite-preview")
-JUDGE_MODEL = os.getenv("JUDGE_MODEL", GEMINI_MODEL)
+# `or`, not the os.getenv default: an env var set to "" must still fall back.
+AGENT_MODEL = os.getenv("AGENT_MODEL") or GEMINI_MODEL
+JUDGE_MODEL = os.getenv("JUDGE_MODEL") or GEMINI_MODEL  # held out from AGENT_MODEL on purpose
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "")  # "" | "google" | "openrouter"
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
